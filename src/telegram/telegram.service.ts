@@ -14,10 +14,10 @@ export class TelegramService implements OnModuleInit {
   private userStorage = new Map<number, BillEntry[]>();
 
   constructor() {
-    this.bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
+    this.bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN!);
     this.setupMiddlewares();
+    this.setupWizard(); // Setup wizard first
     this.setupCommands();
-    this.setupWizard();
   }
 
   onModuleInit() {
@@ -33,12 +33,18 @@ export class TelegramService implements OnModuleInit {
       ctx.reply('Welcome to Power Outage Bot! Use /add to register a bill ID');
     });
 
-    this.bot.command('add', (ctx) => ctx.scene.enter('ADD_BILL_WIZARD'));
-    this.bot.command('check', (ctx) => ctx.scene.enter('CHECK_OUTAGE_WIZARD'));
+    this.bot.command('add', (ctx) => ctx.scene?.enter('ADD_BILL_WIZARD'));
+    this.bot.command('check', (ctx) => ctx.scene?.enter('CHECK_OUTAGE_WIZARD'));
   }
 
   private setupWizard() {
-    type WizardContext = Scenes.WizardContext;
+    interface WizardState {
+      billId?: string;
+    }
+    
+    interface WizardContext extends Scenes.WizardContext {
+      wizard: Scenes.WizardContextWizard<WizardContext> & { state: WizardState };
+    }
 
     const addBillWizard = new Scenes.WizardScene<WizardContext>(
       'ADD_BILL_WIZARD',
@@ -60,7 +66,8 @@ export class TelegramService implements OnModuleInit {
       },
       async (ctx) => {
         const alias = (ctx.message as any)?.text;
-        const userId = ctx.from.id;
+        const userId = ctx.from?.id;
+        if (!userId) return;
         const billId = (ctx.wizard.state as any)?.billId;
 
         if (!this.userStorage.has(userId)) {
@@ -96,7 +103,7 @@ export class TelegramService implements OnModuleInit {
         return ctx.wizard.next();
       },
       async (ctx) => {
-        if (!('data' in ctx.callbackQuery)) return;
+        if (!ctx.callbackQuery || !('data' in ctx.callbackQuery)) return;
 
         (ctx.wizard.state as { billId?: string }).billId =
           ctx.callbackQuery.data;
