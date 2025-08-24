@@ -51,22 +51,24 @@ export class TelegramService implements OnModuleInit {
           return;
         }
         ctx.wizard.state.billId = billId;
-        await ctx.reply('Now please enter an alias for this bill (e.g. "home"):');
+        await ctx.reply(
+          'Now please enter an alias for this bill (e.g. "home"):',
+        );
         return ctx.wizard.next();
       },
       async (ctx) => {
         const alias = (ctx.message as any)?.text;
         const userId = ctx.from.id;
         const billId = ctx.wizard.state.billId;
-        
+
         if (!this.userStorage.has(userId)) {
           this.userStorage.set(userId, []);
         }
-        
+
         this.userStorage.get(userId).push({ alias, billId });
         await ctx.reply(`Saved! Use /check to view outage times`);
         return ctx.scene.leave();
-      }
+      },
     );
 
     const checkOutageWizard = new Scenes.WizardScene(
@@ -74,67 +76,75 @@ export class TelegramService implements OnModuleInit {
       async (ctx) => {
         const userId = ctx.from.id;
         const entries = this.userStorage.get(userId);
-        
+
         if (!entries?.length) {
           await ctx.reply('No saved bills. Use /add to register one first.');
           return ctx.scene.leave();
         }
-        
-        const buttons = entries.map(entry => 
-          [{ text: entry.alias, callback_data: entry.billId }]
-        );
-        
+
+        const buttons = entries.map((entry) => [
+          { text: entry.alias, callback_data: entry.billId },
+        ]);
+
         await ctx.reply('Select a bill:', {
           reply_markup: {
-            inline_keyboard: buttons
-          }
+            inline_keyboard: buttons,
+          },
         });
         return ctx.wizard.next();
       },
       async (ctx) => {
         if (!('data' in ctx.callbackQuery)) return;
-        
+
         ctx.wizard.state.billId = ctx.callbackQuery.data;
         const buttons = [
           [{ text: 'Today', callback_data: 'today' }],
           [{ text: 'Tomorrow', callback_data: 'tomorrow' }],
-          [{ text: 'Day after tomorrow', callback_data: 'dayafter' }]
+          [{ text: 'Day after tomorrow', callback_data: 'dayafter' }],
         ];
-        
+
         await ctx.reply('Select date:', {
-          reply_markup: { inline_keyboard: buttons }
+          reply_markup: { inline_keyboard: buttons },
         });
         return ctx.wizard.next();
       },
       async (ctx) => {
         if (!('data' in ctx.callbackQuery)) return;
-        
+
         const dateType = ctx.callbackQuery.data;
         const date = this.getDateForType(dateType);
         const billId = ctx.wizard.state.billId;
-        
+
         try {
           await ctx.sendChatAction('typing');
-          const response = await axios.get('http://85.185.251.108:8007/home/popfeeder', {
-            params: {
-              date: date.toFormat('yyyy/LL/dd'),
-              id: billId
+          const response = await axios.get(
+            'http://85.185.251.108:8007/home/popfeeder',
+            {
+              params: {
+                date: date.toFormat('yyyy/LL/dd'),
+                id: billId,
+              },
+              headers: {
+                'User-Agent':
+                  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36',
+                Referer: 'http://www.kpedc.com/',
+                Accept: 'application/json',
+              },
             },
-            headers: {
-              'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36',
-              'Referer': 'http://www.kpedc.com/',
-              'Accept': 'application/json'
-            }
-          });
-          
-          const periods = [...new Set(response.data.data.map(item => item.period))];
+          );
+
+          const periods = [
+            ...new Set(response.data.data.map((item) => item.period)),
+          ];
           await ctx.reply(`Outage times:\n${periods.join('\n')}`);
         } catch (error) {
-          await ctx.reply('Error fetching outage schedule. Please try again later.');
+          await ctx.reply(
+            'Error fetching outage schedule. Please try again later.',
+          );
         }
-        
+
         return ctx.scene.leave();
-      }
+      },
     );
 
     const stage = new Scenes.Stage([addBillWizard, checkOutageWizard]);
@@ -144,9 +154,12 @@ export class TelegramService implements OnModuleInit {
   private getDateForType(type: string): DateTime {
     const now = DateTime.now();
     switch (type) {
-      case 'tomorrow': return now.plus({ days: 1 });
-      case 'dayafter': return now.plus({ days: 2 });
-      default: return now;
+      case 'tomorrow':
+        return now.plus({ days: 1 });
+      case 'dayafter':
+        return now.plus({ days: 2 });
+      default:
+        return now;
     }
   }
 }
