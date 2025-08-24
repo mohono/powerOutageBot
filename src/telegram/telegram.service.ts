@@ -35,10 +35,10 @@ export class TelegramService implements OnModuleInit {
 
   private setupCommands() {
     this.bot.command('start', (ctx) => {
-      ctx.reply(`Welcome to Power Outage Bot!
-/add - Register new bill ID
-/check - Check outage times
-/delete - Remove a saved bill ID`);
+      ctx.reply(`به ربات قطعی برق خوش آمدید!
+/add - ثبت شناسه قبض جدید
+/check - بررسی زمان‌های قطعی
+/delete - حذف شناسه قبض ذخیره شده`);
     });
 
     this.bot.command('add', (ctx) => ctx.scene?.enter('ADD_BILL_WIZARD'));
@@ -59,7 +59,7 @@ export class TelegramService implements OnModuleInit {
     const addBillWizard = new Scenes.WizardScene<WizardContext>(
       'ADD_BILL_WIZARD',
       async (ctx) => {
-        await ctx.reply('Please enter your bill ID:');
+        await ctx.reply('لطفا شناسه قبض خود را وارد کنید:');
         return ctx.wizard.next();
       },
       async (ctx) => {
@@ -68,7 +68,7 @@ export class TelegramService implements OnModuleInit {
             ? (ctx.message as { text: string }).text
             : undefined;
         if (!billId?.match(/^\d+$/)) {
-          await ctx.reply('Invalid bill ID. Please enter numbers only.');
+          await ctx.reply('شناسه قبض نامعتبر. لطفا فقط عدد وارد کنید.');
           return;
         }
         (ctx.wizard.state as { billId?: string }).billId = billId;
@@ -95,7 +95,7 @@ export class TelegramService implements OnModuleInit {
         }
 
         await this.storageService.saveEntry(userId, { alias, billId });
-        await ctx.reply(`Saved! Use /check to view outage times`);
+        await ctx.reply(`ذخیره شد! از دستور /check برای مشاهده زمان قطعی استفاده کنید`);
         return ctx.scene.leave();
       },
     );
@@ -107,7 +107,7 @@ export class TelegramService implements OnModuleInit {
         const entries = await this.storageService.getEntries(userId);
 
         if (!entries?.length) {
-          await ctx.reply('No saved bills. Use /add to register one first.');
+          await ctx.reply('هیچ قبضی ذخیره نشده. ابتدا از دستور /add استفاده کنید.');
           return ctx.scene.leave();
         }
 
@@ -115,7 +115,7 @@ export class TelegramService implements OnModuleInit {
           { text: entry.alias, callback_data: entry.billId },
         ]);
 
-        await ctx.reply('Select a bill:', {
+        await ctx.reply('یک قبض انتخاب کنید:', {
           reply_markup: {
             inline_keyboard: buttons,
           },
@@ -128,12 +128,12 @@ export class TelegramService implements OnModuleInit {
         (ctx.wizard.state as { billId?: string }).billId =
           ctx.callbackQuery.data;
         const buttons = [
-          [{ text: 'Today', callback_data: 'today' }],
-          [{ text: 'Tomorrow', callback_data: 'tomorrow' }],
-          [{ text: 'Day after tomorrow', callback_data: 'dayafter' }],
+          [{ text: 'امروز', callback_data: 'today' }],
+          [{ text: 'فردا', callback_data: 'tomorrow' }],
+          [{ text: 'پس فردا', callback_data: 'dayafter' }],
         ];
 
-        await ctx.reply('Select date:', {
+        await ctx.reply('تاریخ را انتخاب کنید:', {
           reply_markup: { inline_keyboard: buttons },
         });
         return ctx.wizard.next();
@@ -166,7 +166,7 @@ export class TelegramService implements OnModuleInit {
           const periods = [
             ...new Set(response.data.data.map((item) => item.period)),
           ];
-          await ctx.reply(`Outage times:\n${periods.join('\n')}`);
+          await ctx.reply(`زمان‌های قطعی:\n${periods.join('\n')}`);
         } catch (error) {
           await ctx.reply(
             'Error fetching outage schedule. Please try again later.',
@@ -185,7 +185,7 @@ export class TelegramService implements OnModuleInit {
 
         const entries = await this.storageService.getEntries(userId);
         if (!entries.length) {
-          await ctx.reply('No saved bills to delete.');
+          await ctx.reply('هیچ قبضی برای حذف وجود ندارد.');
           return ctx.scene.leave();
         }
 
@@ -196,7 +196,7 @@ export class TelegramService implements OnModuleInit {
           },
         ]);
 
-        await ctx.reply('Select bill to delete:', {
+        await ctx.reply('قبض مورد نظر برای حذف را انتخاب کنید:', {
           reply_markup: { inline_keyboard: buttons },
         });
         return ctx.wizard.next();
@@ -208,15 +208,15 @@ export class TelegramService implements OnModuleInit {
 
         const index = parseInt(ctx.callbackQuery.data);
         if (isNaN(index)) {
-          await ctx.reply('Invalid selection');
+          await ctx.reply('انتخاب نامعتبر');
           return ctx.scene.leave();
         }
 
         const success = await this.storageService.deleteEntry(userId, index);
         if (success) {
-          await ctx.reply('Bill entry deleted successfully');
+          await ctx.reply('قبض با موفقیت حذف شد');
         } else {
-          await ctx.reply('Failed to delete bill entry');
+          await ctx.reply('خطا در حذف قبض');
         }
 
         return ctx.scene.leave();
