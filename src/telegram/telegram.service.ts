@@ -38,7 +38,9 @@ export class TelegramService implements OnModuleInit {
   }
 
   private setupWizard() {
-    const addBillWizard = new Scenes.WizardScene(
+    type WizardContext = Scenes.WizardContext;
+
+    const addBillWizard = new Scenes.WizardScene<WizardContext>(
       'ADD_BILL_WIZARD',
       async (ctx) => {
         await ctx.reply('Please enter your bill ID:');
@@ -50,39 +52,28 @@ export class TelegramService implements OnModuleInit {
           await ctx.reply('Invalid bill ID. Please enter numbers only.');
           return;
         }
-        ctx.wizard.state.billId = billId;
+        (ctx.wizard.state as { billId?: string }).billId = billId;
         await ctx.reply(
           'Now please enter an alias for this bill (e.g. "home"):',
         );
         return ctx.wizard.next();
       },
       async (ctx) => {
-        const alias = (ctx.message as any)?.text?.trim();
+        const alias = (ctx.message as any)?.text;
         const userId = ctx.from.id;
-        const billId = ctx.wizard.state.billId;
-
-        if (!alias) {
-          await ctx.reply('Alias cannot be empty. Please try again.');
-          return;
-        }
+        const billId = (ctx.wizard.state as any)?.billId;
 
         if (!this.userStorage.has(userId)) {
           this.userStorage.set(userId, []);
         }
 
-        const userEntries = this.userStorage.get(userId);
-        if (userEntries.some(entry => entry.alias === alias)) {
-          await ctx.reply('This alias is already in use. Please choose a different name.');
-          return;
-        }
-
-        userEntries.push({ alias, billId });
-        await ctx.reply(`✅ Saved "${alias}"! Use /check to view outage times`);
+        this.userStorage.get(userId).push({ alias, billId });
+        await ctx.reply(`Saved! Use /check to view outage times`);
         return ctx.scene.leave();
       },
     );
 
-    const checkOutageWizard = new Scenes.WizardScene(
+    const checkOutageWizard = new Scenes.WizardScene<WizardContext>(
       'CHECK_OUTAGE_WIZARD',
       async (ctx) => {
         const userId = ctx.from.id;
@@ -107,7 +98,8 @@ export class TelegramService implements OnModuleInit {
       async (ctx) => {
         if (!('data' in ctx.callbackQuery)) return;
 
-        ctx.wizard.state.billId = ctx.callbackQuery.data;
+        (ctx.wizard.state as { billId?: string }).billId =
+          ctx.callbackQuery.data;
         const buttons = [
           [{ text: 'Today', callback_data: 'today' }],
           [{ text: 'Tomorrow', callback_data: 'tomorrow' }],
@@ -124,7 +116,7 @@ export class TelegramService implements OnModuleInit {
 
         const dateType = ctx.callbackQuery.data;
         const date = this.getDateForType(dateType);
-        const billId = ctx.wizard.state.billId;
+        const billId = (ctx.wizard.state as { billId?: string }).billId;
 
         try {
           await ctx.sendChatAction('typing');
@@ -144,20 +136,13 @@ export class TelegramService implements OnModuleInit {
             },
           );
 
-          if (!response.data?.success || !Array.isArray(response.data.data)) {
-            throw new Error('Invalid API response structure');
-          }
-
-          const periods = [...new Set(response.data.data.map(item => item.period))];
-          const message = periods.length > 0 
-            ? `⚡ Outage times for selected period:\n${periods.join('\n')}`
-            : 'No outage periods found for this date';
-            
-          await ctx.reply(message);
+          const periods = [
+            ...new Set(response.data.data.map((item) => item.period)),
+          ];
+          await ctx.reply(`Outage times:\n${periods.join('\n')}`);
         } catch (error) {
-          console.error('Outage check failed:', error);
           await ctx.reply(
-            '⚠️ Failed to get outage schedule. Please try again later.'
+            'Error fetching outage schedule. Please try again later.',
           );
         }
 
@@ -165,7 +150,10 @@ export class TelegramService implements OnModuleInit {
       },
     );
 
-    const stage = new Scenes.Stage([addBillWizard, checkOutageWizard]);
+    const stage = new Scenes.Stage<WizardContext>([
+      addBillWizard,
+      checkOutageWizard,
+    ]);
     this.bot.use(stage.middleware());
   }
 
