@@ -87,11 +87,13 @@ export class TelegramService implements OnModuleInit {
         const billId = (ctx.wizard.state as WizardState)?.billId;
 
         const entries = await this.storageService.getEntries(userId);
-        if (entries.some(e => e.alias === alias)) {
-          await ctx.reply('This alias is already in use. Please try another name.');
+        if (entries.some((e) => e.alias === alias)) {
+          await ctx.reply(
+            'This alias is already in use. Please try another name.',
+          );
           return;
         }
-        
+
         await this.storageService.saveEntry(userId, { alias, billId });
         await ctx.reply(`Saved! Use /check to view outage times`);
         return ctx.scene.leave();
@@ -180,7 +182,7 @@ export class TelegramService implements OnModuleInit {
       async (ctx) => {
         const userId = ctx.from?.id;
         if (!userId) return;
-        
+
         const entries = await this.storageService.getEntries(userId);
         if (!entries.length) {
           await ctx.reply('No saved bills to delete.');
@@ -188,14 +190,14 @@ export class TelegramService implements OnModuleInit {
         }
 
         const buttons = entries.map((entry, index) => [
-          { 
-            text: `${entry.alias} (${entry.billId})`, 
-            callback_data: index.toString() 
-          }
+          {
+            text: `${entry.alias} (${entry.billId})`,
+            callback_data: index.toString(),
+          },
         ]);
 
         await ctx.reply('Select bill to delete:', {
-          reply_markup: { inline_keyboard: buttons }
+          reply_markup: { inline_keyboard: buttons },
         });
         return ctx.wizard.next();
       },
@@ -216,9 +218,9 @@ export class TelegramService implements OnModuleInit {
         } else {
           await ctx.reply('Failed to delete bill entry');
         }
-        
+
         return ctx.scene.leave();
-      }
+      },
     );
 
     const stage = new Scenes.Stage<WizardContext>([
