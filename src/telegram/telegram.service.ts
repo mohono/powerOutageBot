@@ -73,7 +73,7 @@ export class TelegramService implements OnModuleInit {
         }
         (ctx.wizard.state as { billId?: string }).billId = billId;
         await ctx.reply(
-          'Now please enter an alias for this bill (e.g. "home"):',
+          'لطفا یک نام مستعار برای این قبض وارد کنید (مثلا "خانه"):',
         );
         return ctx.wizard.next();
       },
@@ -89,7 +89,7 @@ export class TelegramService implements OnModuleInit {
         const entries = await this.storageService.getEntries(userId);
         if (entries.some((e) => e.alias === alias)) {
           await ctx.reply(
-            'This alias is already in use. Please try another name.',
+            'این نام قبلا استفاده شده. لطفا نام دیگری انتخاب کنید.',
           );
           return;
         }
@@ -169,7 +169,7 @@ export class TelegramService implements OnModuleInit {
           await ctx.reply(`زمان‌های قطعی:\n${periods.join('\n')}`);
         } catch (error) {
           await ctx.reply(
-            'Error fetching outage schedule. Please try again later.',
+            'خطا در دریافت برنامه قطعی. لطفا مجددا تلاش کنید.',
           );
         }
 
