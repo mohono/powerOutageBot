@@ -49,8 +49,6 @@ export class TelegramService implements OnModuleInit {
   private setupWizard() {
     interface WizardState {
       billId?: string;
-      lastUsedDate?: string;
-      lastUsedBill?: string;
     }
 
     interface WizardContext extends Scenes.WizardContext {
@@ -122,39 +120,13 @@ export class TelegramService implements OnModuleInit {
             inline_keyboard: buttons,
           },
         });
-        ctx.wizard.state.lastUsedBill = ctx.wizard.state.lastUsedBill;
         return ctx.wizard.next();
       },
       async (ctx) => {
         if (!ctx.callbackQuery || !('data' in ctx.callbackQuery)) return;
-        
-        ctx.wizard.state.billId = ctx.callbackQuery.data;
-        ctx.wizard.state.lastUsedBill = ctx.callbackQuery.data;
-        
-        // Check if we have a last used date
-        if (ctx.wizard.state.lastUsedDate) {
-          await ctx.reply(`Use last selected date (${ctx.wizard.state.lastUsedDate})?`, {
-            reply_markup: {
-              inline_keyboard: [
-                [{ text: 'Yes', callback_data: 'last' }],
-                [{ text: 'Choose new date', callback_data: 'new' }]
-              ]
-            }
-          });
-          return ctx.wizard.next();
-        }
-        
-        // No last date stored, proceed to date selection
-        return ctx.wizard.selectStep(3);
-      },
-      async (ctx) => {
-        if (!ctx.callbackQuery || !('data' in ctx.callbackQuery)) return;
 
-        const choice = ctx.callbackQuery.data;
-        if (choice === 'last') {
-          // Use stored date and proceed to results
-          return ctx.wizard.selectStep(4);
-        }
+        (ctx.wizard.state as { billId?: string }).billId =
+          ctx.callbackQuery.data;
         const buttons = [
           [{ text: 'Today', callback_data: 'today' }],
           [{ text: 'Tomorrow', callback_data: 'tomorrow' }],
@@ -166,11 +138,6 @@ export class TelegramService implements OnModuleInit {
         });
         return ctx.wizard.next();
       },
-      async (ctx) => {
-        if (!ctx.callbackQuery || !('data' in ctx.callbackQuery)) return;
-        
-        const dateType = ctx.callbackQuery.data;
-        ctx.wizard.state.lastUsedDate = dateType;
       async (ctx) => {
         if (!('data' in ctx.callbackQuery)) return;
 
