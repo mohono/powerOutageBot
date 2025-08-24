@@ -41,9 +41,11 @@ export class TelegramService implements OnModuleInit {
     interface WizardState {
       billId?: string;
     }
-    
+
     interface WizardContext extends Scenes.WizardContext {
-      wizard: Scenes.WizardContextWizard<WizardContext> & { state: WizardState };
+      wizard: Scenes.WizardContextWizard<WizardContext> & {
+        state: WizardState;
+      };
     }
 
     const addBillWizard = new Scenes.WizardScene<WizardContext>(
@@ -142,7 +144,7 @@ export class TelegramService implements OnModuleInit {
               },
             },
           );
-
+          console.log(response.data);
           const periods = [
             ...new Set(response.data.data.map((item) => item.period)),
           ];
