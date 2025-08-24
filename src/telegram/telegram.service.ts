@@ -57,16 +57,27 @@ export class TelegramService implements OnModuleInit {
         return ctx.wizard.next();
       },
       async (ctx) => {
-        const alias = (ctx.message as any)?.text;
+        const alias = (ctx.message as any)?.text?.trim();
         const userId = ctx.from.id;
         const billId = ctx.wizard.state.billId;
+
+        if (!alias) {
+          await ctx.reply('Alias cannot be empty. Please try again.');
+          return;
+        }
 
         if (!this.userStorage.has(userId)) {
           this.userStorage.set(userId, []);
         }
 
-        this.userStorage.get(userId).push({ alias, billId });
-        await ctx.reply(`Saved! Use /check to view outage times`);
+        const userEntries = this.userStorage.get(userId);
+        if (userEntries.some(entry => entry.alias === alias)) {
+          await ctx.reply('This alias is already in use. Please choose a different name.');
+          return;
+        }
+
+        userEntries.push({ alias, billId });
+        await ctx.reply(`✅ Saved "${alias}"! Use /check to view outage times`);
         return ctx.scene.leave();
       },
     );
@@ -133,13 +144,20 @@ export class TelegramService implements OnModuleInit {
             },
           );
 
-          const periods = [
-            ...new Set(response.data.data.map((item) => item.period)),
-          ];
-          await ctx.reply(`Outage times:\n${periods.join('\n')}`);
+          if (!response.data?.success || !Array.isArray(response.data.data)) {
+            throw new Error('Invalid API response structure');
+          }
+
+          const periods = [...new Set(response.data.data.map(item => item.period))];
+          const message = periods.length > 0 
+            ? `⚡ Outage times for selected period:\n${periods.join('\n')}`
+            : 'No outage periods found for this date';
+            
+          await ctx.reply(message);
         } catch (error) {
+          console.error('Outage check failed:', error);
           await ctx.reply(
-            'Error fetching outage schedule. Please try again later.',
+            '⚠️ Failed to get outage schedule. Please try again later.'
           );
         }
 
