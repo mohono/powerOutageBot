@@ -157,7 +157,6 @@ export class TelegramService implements OnModuleInit {
               },
             },
           );
-          console.log(response.data);
           const periods = [
             ...new Set(response.data.data.map((item) => item.period)),
           ];
@@ -181,7 +180,7 @@ export class TelegramService implements OnModuleInit {
 
   private getDateForType(type: string): string {
     const now = new Date();
-    let date = new Date(now);
+    const date = new Date(now);
     switch (type) {
       case 'tomorrow':
         date.setDate(now.getDate() + 1);
