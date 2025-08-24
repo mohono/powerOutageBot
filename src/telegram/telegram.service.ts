@@ -137,10 +137,10 @@ export class TelegramService implements OnModuleInit {
                 id: billId,
               },
               headers: {
-                'User-Agent':
-                  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36',
-                Referer: 'http://www.kpedc.com/',
-                Accept: 'application/json',
+                'accept': 'application/json, text/plain, */*',
+                'accept-language': 'en-US,en;q=0.9,de;q=0.8',
+                'Referer': 'http://www.kpedc.com/',
+                'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36'
               },
             },
           );
