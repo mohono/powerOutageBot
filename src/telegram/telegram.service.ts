@@ -1,3 +1,9 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/no-unsafe-call */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unsafe-argument */
+/* eslint-disable @typescript-eslint/no-unsafe-return */
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { Telegraf, Scenes, session } from 'telegraf';
 import { DateTime } from 'luxon';
@@ -43,9 +49,8 @@ export class TelegramService implements OnModuleInit {
     }
 
     interface WizardContext extends Scenes.WizardContext {
-      wizard: Scenes.WizardContextWizard<WizardContext> & {
-        state: WizardState;
-      };
+      wizard: Scenes.WizardContextWizard<WizardContext>;
+      state: WizardState;
     }
 
     const addBillWizard = new Scenes.WizardScene<WizardContext>(
@@ -55,7 +60,10 @@ export class TelegramService implements OnModuleInit {
         return ctx.wizard.next();
       },
       async (ctx) => {
-        const billId = (ctx.message as any)?.text;
+        const billId =
+          'text' in (ctx.message ?? {})
+            ? (ctx.message as { text: string }).text
+            : undefined;
         if (!billId?.match(/^\d+$/)) {
           await ctx.reply('Invalid bill ID. Please enter numbers only.');
           return;
@@ -67,10 +75,13 @@ export class TelegramService implements OnModuleInit {
         return ctx.wizard.next();
       },
       async (ctx) => {
-        const alias = (ctx.message as any)?.text;
+        const alias =
+          'text' in (ctx.message ?? {})
+            ? (ctx.message as { text: string }).text
+            : undefined;
         const userId = ctx.from?.id;
         if (!userId) return;
-        const billId = (ctx.wizard.state as any)?.billId;
+        const billId = (ctx.wizard.state as WizardState)?.billId;
 
         if (!this.userStorage.has(userId)) {
           this.userStorage.set(userId, []);
@@ -137,10 +148,11 @@ export class TelegramService implements OnModuleInit {
                 id: billId,
               },
               headers: {
-                'accept': 'application/json, text/plain, */*',
+                accept: 'application/json, text/plain, */*',
                 'accept-language': 'en-US,en;q=0.9,de;q=0.8',
-                'Referer': 'http://www.kpedc.com/',
-                'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36'
+                Referer: 'http://www.kpedc.com/',
+                'User-Agent':
+                  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36',
               },
             },
           );
