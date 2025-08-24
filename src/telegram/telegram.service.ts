@@ -8,6 +8,7 @@ import { Injectable, OnModuleInit } from '@nestjs/common';
 import { Telegraf, Scenes, session } from 'telegraf';
 import { DateTime } from 'luxon';
 import axios from 'axios';
+import { toJalaali } from 'jalaali-js';
 
 interface BillEntry {
   alias: string;
@@ -144,7 +145,7 @@ export class TelegramService implements OnModuleInit {
             'http://85.185.251.108:8007/home/popfeeder',
             {
               params: {
-                date: date.toFormat('yyyy/LL/dd'),
+                date: date,
                 id: billId,
               },
               headers: {
@@ -178,15 +179,18 @@ export class TelegramService implements OnModuleInit {
     this.bot.use(stage.middleware());
   }
 
-  private getDateForType(type: string): DateTime {
-    const now = DateTime.now();
+  private getDateForType(type: string): string {
+    const now = new Date();
+    let date = new Date(now);
     switch (type) {
       case 'tomorrow':
-        return now.plus({ days: 1 });
+        date.setDate(now.getDate() + 1);
+        break;
       case 'dayafter':
-        return now.plus({ days: 2 });
-      default:
-        return now;
+        date.setDate(now.getDate() + 2);
+        break;
     }
+    const { jy: year, jm: month, jd: day } = toJalaali(date);
+    return `${year}/${String(month).padStart(2, '0')}/${String(day).padStart(2, '0')}`;
   }
 }
