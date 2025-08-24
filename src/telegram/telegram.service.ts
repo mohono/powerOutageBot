@@ -167,31 +167,12 @@ export class TelegramService implements OnModuleInit {
             ...new Set(response.data.data.map((item) => item.period)),
           ];
           await ctx.reply(`Outage times:\n${periods.join('\n')}`);
-
-          // Offer to check another date
-          const buttons = [
-            [{ text: 'Check another date', callback_data: 'another' }],
-            [{ text: 'Done', callback_data: 'done' }],
-          ];
-
-          await ctx.reply('Would you like to check another date?', {
-            reply_markup: { inline_keyboard: buttons },
-          });
-          return ctx.wizard.next();
         } catch (error) {
           await ctx.reply(
             'Error fetching outage schedule. Please try again later.',
           );
-          return ctx.scene.leave();
         }
-      },
-      async (ctx) => {
-        if (!ctx.callbackQuery || !('data' in ctx.callbackQuery)) return;
 
-        if (ctx.callbackQuery.data === 'another') {
-          // Go back to date selection (step index 2)
-          return ctx.wizard.selectStep(2);
-        }
         return ctx.scene.leave();
       },
     );
