@@ -5,10 +5,7 @@ import { TelegramModule } from './telegram/telegram.module';
 import { ConfigModule } from '@nestjs/config';
 
 @Module({
-  imports: [
-    ConfigModule.forRoot(),
-    TelegramModule
-  ],
+  imports: [ConfigModule.forRoot(), TelegramModule],
   controllers: [AppController],
   providers: [AppService],
 })
