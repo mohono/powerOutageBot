@@ -445,7 +445,12 @@ export class TelegramService implements OnModuleInit {
       const userId = ctx.from.id;
       const entries = await this.storageService.getEntries(userId);
 
-      if (!entries[index]) return;
+      if (!entries[index]) {
+        await this.editMainMessage(ctx, userId, '❌ قبض مورد نظر یافت نشد.', [
+          [{ text: '🔙 بازگشت', callback_data: 'manage_bills' }],
+        ]);
+        return;
+      }
 
       const keyboard = [
         [
@@ -468,15 +473,38 @@ export class TelegramService implements OnModuleInit {
       const index = parseInt(ctx.match[1]);
       const userId = ctx.from.id;
 
-      const success = await this.storageService.deleteEntry(userId, index);
-      if (success) {
-        await this.editMainMessage(ctx, userId, '✅ *قبض با موفقیت حذف شد*', [
-          [{ text: '🔙 بازگشت', callback_data: 'back_to_main' }],
-        ]);
-      } else {
-        await this.editMainMessage(ctx, userId, '❌ *خطا در حذف قبض*', [
-          [{ text: '🔙 بازگشت', callback_data: 'manage_bills' }],
-        ]);
+      try {
+        const success = await this.storageService.deleteEntry(userId, index);
+        if (success) {
+          await this.editMainMessage(ctx, userId, '✅ *قبض با موفقیت حذف شد*', [
+            [{ text: '🏠 منوی اصلی', callback_data: 'back_to_main' }],
+          ]);
+        } else {
+          await this.editMainMessage(
+            ctx,
+            userId,
+            '❌ *خطا در حذف قبض*\n\nلطفاً دوباره تلاش کنید.',
+            [
+              [
+                { text: '🔙 مدیریت قبوض', callback_data: 'manage_bills' },
+                { text: '🏠 منوی اصلی', callback_data: 'back_to_main' },
+              ],
+            ],
+          );
+        }
+      } catch (error) {
+        console.error('Error deleting entry:', error);
+        await this.editMainMessage(
+          ctx,
+          userId,
+          '❌ *خطا در حذف قبض*\n\nلطفاً دوباره تلاش کنید.',
+          [
+            [
+              { text: '🔙 مدیریت قبوض', callback_data: 'manage_bills' },
+              { text: '🏠 منوی اصلی', callback_data: 'back_to_main' },
+            ],
+          ],
+        );
       }
     });
 
@@ -641,7 +669,7 @@ export class TelegramService implements OnModuleInit {
       async (ctx) => {
         // Send separate message for wizard instead of editing main message
         await ctx.reply(
-          '➕ *افزودن قبض جدید*\n\n📋 لطفاً شناسه قبض خود را در قسمت چت وارد کنید:\n\n💡 *راهنما:* شناسه قبض یک عدد ۱۳ رقمی است.',
+          '➕ *افزودن قبض جدید*\n\n📋 لطفاً شناسه قبض خود را در قسمت چت وارد کنید:\n\n💡 *راهنما:* شناسه قبض یک عدد ۱۳ رقمی است.\n\n💬 برای بازگشت به منو، دستور /menu را ارسال کنید.',
           {
             parse_mode: 'Markdown',
             reply_markup: {
@@ -683,7 +711,7 @@ export class TelegramService implements OnModuleInit {
 
         if (!billId.match(/^\d+$/)) {
           await ctx.reply(
-            '❌ *شناسه قبض نامعتبر*\n\nلطفاً فقط عدد وارد کنید.',
+            '❌ *شناسه قبض نامعتبر*\n\nلطفاً فقط عدد وارد کنید.\n\n💬 برای بازگشت به منو، دستور /menu را ارسال کنید.',
             {
               parse_mode: 'Markdown',
               reply_markup: {
@@ -701,7 +729,7 @@ export class TelegramService implements OnModuleInit {
         const entries = await this.storageService.getEntries(userId);
         if (entries.some((e) => e.billId === billId)) {
           await ctx.reply(
-            '⚠️ *شناسه قبض تکراری*\n\nاین شناسه قبض قبلاً ثبت شده است. لطفاً شناسه قبض دیگری وارد کنید.',
+            '⚠️ *شناسه قبض تکراری*\n\nاین شناسه قبض قبلاً ثبت شده است. لطفاً شناسه قبض دیگری وارد کنید.\n\n💬 برای بازگشت به منو، دستور /menu را ارسال کنید.',
             {
               parse_mode: 'Markdown',
               reply_markup: {
@@ -716,7 +744,7 @@ export class TelegramService implements OnModuleInit {
 
         (ctx.wizard.state as { billId?: string }).billId = billId;
         await ctx.reply(
-          '🏷 *نام مستعار*\n\nلطفاً یک نام کوتاه و قابل تشخیص برای این قبض وارد کنید:\n\n💡 *مثال:* خانه، دفتر، مغازه',
+          '🏷 *نام مستعار*\n\nلطفاً یک نام کوتاه و قابل تشخیص برای این قبض وارد کنید:\n\n💡 *مثال:* خانه، دفتر، مغازه\n\n💬 برای بازگشت به منو، دستور /menu را ارسال کنید.',
           {
             parse_mode: 'Markdown',
             reply_markup: {
@@ -764,7 +792,7 @@ export class TelegramService implements OnModuleInit {
         const entries = await this.storageService.getEntries(userId);
         if (entries.some((e) => e.alias === alias)) {
           await ctx.reply(
-            '⚠️ *نام تکراری*\n\nاین نام قبلاً استفاده شده. لطفاً نام دیگری انتخاب کنید.',
+            '⚠️ *نام تکراری*\n\nاین نام قبلاً استفاده شده. لطفاً نام دیگری انتخاب کنید.\n\n💬 برای بازگشت به منو، دستور /menu را ارسال کنید.',
             {
               parse_mode: 'Markdown',
               reply_markup: {
