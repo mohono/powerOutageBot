@@ -426,7 +426,10 @@ export class TelegramService implements OnModuleInit {
       }
 
       const keyboard = entries.map((entry, index) => [
-        { text: `🗑 حذف ${entry.alias}`, callback_data: `delete_${index}` },
+        {
+          text: `🗑 حذف ${entry.alias}`,
+          callback_data: `delete_${entry.billId}_${index}`,
+        },
       ]);
       keyboard.push([{ text: '🔙 بازگشت', callback_data: 'back_to_main' }]);
 
@@ -439,13 +442,19 @@ export class TelegramService implements OnModuleInit {
     });
 
     // Delete bill callback
-    this.bot.action(/delete_(\d+)/, async (ctx) => {
+    this.bot.action(/delete_([^_]+)_(\d+)/, async (ctx) => {
       await ctx.answerCbQuery();
-      const index = parseInt(ctx.match[1]);
+      const billId = ctx.match[1];
+      const originalIndex = parseInt(ctx.match[2]);
       const userId = ctx.from.id;
       const entries = await this.storageService.getEntries(userId);
 
-      if (!entries[index]) {
+      // Find current index by billId (in case indices changed)
+      const currentIndex = entries.findIndex(
+        (entry) => entry.billId === billId,
+      );
+
+      if (currentIndex === -1) {
         await this.editMainMessage(ctx, userId, '❌ قبض مورد نظر یافت نشد.', [
           [{ text: '🔙 بازگشت', callback_data: 'manage_bills' }],
         ]);
@@ -454,7 +463,7 @@ export class TelegramService implements OnModuleInit {
 
       const keyboard = [
         [
-          { text: '✅ بله، حذف کن', callback_data: `confirm_delete_${index}` },
+          { text: '✅ بله، حذف کن', callback_data: `confirm_delete_${billId}` },
           { text: '❌ انصراف', callback_data: 'manage_bills' },
         ],
       ];
@@ -462,18 +471,28 @@ export class TelegramService implements OnModuleInit {
       await this.editMainMessage(
         ctx,
         userId,
-        `🗑 *تأیید حذف*\n\nآیا مطمئنید که می‌خواهید قبض "${entries[index].alias}" را حذف کنید؟`,
+        `🗑 *تأیید حذف*\n\nآیا مطمئنید که می‌خواهید قبض "${entries[currentIndex].alias}" را حذف کنید؟`,
         keyboard,
       );
     });
 
     // Confirm delete callback
-    this.bot.action(/confirm_delete_(\d+)/, async (ctx) => {
-      await ctx.answerCbQuery('✅ حذف شد');
-      const index = parseInt(ctx.match[1]);
+    this.bot.action(/confirm_delete_([^_]+)/, async (ctx) => {
+      await ctx.answerCbQuery('⏳ در حال حذف...');
+      const billId = ctx.match[1];
       const userId = ctx.from.id;
 
       try {
+        const entries = await this.storageService.getEntries(userId);
+        const index = entries.findIndex((entry) => entry.billId === billId);
+
+        if (index === -1) {
+          await this.editMainMessage(ctx, userId, '❌ قبض مورد نظر یافت نشد.', [
+            [{ text: '🔙 بازگشت', callback_data: 'manage_bills' }],
+          ]);
+          return;
+        }
+
         const success = await this.storageService.deleteEntry(userId, index);
         if (success) {
           await this.editMainMessage(ctx, userId, '✅ *قبض با موفقیت حذف شد*', [

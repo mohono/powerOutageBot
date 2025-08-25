@@ -1,3 +1,6 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/no-unsafe-member-access */
+/* eslint-disable @typescript-eslint/no-unsafe-return */
 import { Injectable } from '@nestjs/common';
 import { promises as fs } from 'fs';
 import * as path from 'path';
@@ -12,13 +15,9 @@ export class StorageService {
   private readonly storagePath = path.join(process.cwd(), 'bills.json');
 
   async getEntries(userId: number): Promise<BillEntry[]> {
-    try {
-      const data = await fs.readFile(this.storagePath, 'utf8');
-      const allEntries = JSON.parse(data);
-      return allEntries[userId] || [];
-    } catch (error) {
-      return [];
-    }
+    const data = await fs.readFile(this.storagePath, 'utf8');
+    const allEntries = JSON.parse(data);
+    return allEntries[userId] || [];
   }
 
   async saveEntry(userId: number, entry: BillEntry): Promise<void> {
@@ -41,15 +40,17 @@ export class StorageService {
   }
 
   private async getAllEntries(): Promise<Record<number, BillEntry[]>> {
-    try {
-      const data = await fs.readFile(this.storagePath, 'utf8');
-      return JSON.parse(data);
-    } catch (error) {
-      return {};
-    }
+    const data = await fs.readFile(this.storagePath, 'utf8');
+    return JSON.parse(data);
   }
 
-  private async saveAllEntries(entries: Record<number, BillEntry[]>): Promise<void> {
-    await fs.writeFile(this.storagePath, JSON.stringify(entries, null, 2), 'utf8');
+  private async saveAllEntries(
+    entries: Record<number, BillEntry[]>,
+  ): Promise<void> {
+    await fs.writeFile(
+      this.storagePath,
+      JSON.stringify(entries, null, 2),
+      'utf8',
+    );
   }
 }
