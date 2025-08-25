@@ -584,7 +584,6 @@ export class TelegramService implements OnModuleInit {
   }
 
   private async fetchOutageData(billId: string, date: string) {
-    console.log('+++++++++++++++++++++++++++++');
     const response = await axios.get(
       'http://85.185.251.108:8007/home/popfeeder',
       {
@@ -598,8 +597,6 @@ export class TelegramService implements OnModuleInit {
         },
       },
     );
-    console.log(response);
-    console.log('-------------------------------');
     return [...new Set(response.data.data.map((item) => item.period))];
   }
 
