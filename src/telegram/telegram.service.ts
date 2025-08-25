@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-base-to-string */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-call */
@@ -29,15 +30,15 @@ export class TelegramService implements OnModuleInit {
   private readonly DAILY_REPORT_LIMIT = 20;
 
   constructor(private readonly storageService: StorageService) {
-    this.bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN!);
+    this.bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
     this.setupMiddlewares();
     this.setupWizard();
     this.setupCommands();
     this.setupCallbacks();
   }
 
-  onModuleInit() {
-    this.bot.launch();
+  async onModuleInit() {
+    await this.bot.launch();
   }
 
   private setupMiddlewares() {
@@ -52,7 +53,7 @@ export class TelegramService implements OnModuleInit {
       });
     }
 
-    const userState = this.userStates.get(userId)!;
+    const userState = this.userStates.get(userId);
     // Reset report count if it's a new day
     if (userState.lastReportDate !== this.getCurrentDate()) {
       userState.reportCount = 0;
@@ -583,6 +584,7 @@ export class TelegramService implements OnModuleInit {
   }
 
   private async fetchOutageData(billId: string, date: string) {
+    console.log('+++++++++++++++++++++++++++++');
     const response = await axios.get(
       'http://85.185.251.108:8007/home/popfeeder',
       {
@@ -596,7 +598,8 @@ export class TelegramService implements OnModuleInit {
         },
       },
     );
-
+    console.log(response);
+    console.log('-------------------------------');
     return [...new Set(response.data.data.map((item) => item.period))];
   }
 
