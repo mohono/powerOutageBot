@@ -96,7 +96,7 @@ export class TelegramService implements OnModuleInit {
         { text: '⚡ بررسی سریع قطعی', callback_data: 'quick_check' },
       ]);
 
-      // Add bill buttons (max 3 per row)
+      // Add bill buttons (max 2 per row)
       const billButtons = [];
       for (let i = 0; i < entries.length; i++) {
         billButtons.push({
@@ -125,25 +125,36 @@ export class TelegramService implements OnModuleInit {
     return keyboard;
   }
 
-  private async sendOrEditMainMenu(ctx: any, userId: number) {
+  private async updateMainMenu(
+    ctx: any,
+    userId: number,
+    text?: string,
+    keyboard?: any[],
+  ) {
     const userState = this.getUserState(userId);
-    const keyboard = await this.createMainKeyboard(userId);
-
     const menuText =
+      text ||
       '📱 *منوی اصلی*\n\nاز دکمه‌های زیر برای دسترسی سریع استفاده کنید:';
+    const menuKeyboard = keyboard || (await this.createMainKeyboard(userId));
 
     try {
       if (userState.mainMessageId) {
         // Try to edit existing message
-        await ctx.editMessageText(menuText, {
-          parse_mode: 'Markdown',
-          reply_markup: { inline_keyboard: keyboard },
-        });
+        await ctx.telegram.editMessageText(
+          ctx.chat.id,
+          userState.mainMessageId,
+          undefined,
+          menuText,
+          {
+            parse_mode: 'Markdown',
+            reply_markup: { inline_keyboard: menuKeyboard },
+          },
+        );
       } else {
         // Send new message if no main message exists
         const sentMessage = await ctx.reply(menuText, {
           parse_mode: 'Markdown',
-          reply_markup: { inline_keyboard: keyboard },
+          reply_markup: { inline_keyboard: menuKeyboard },
         });
         userState.mainMessageId = sentMessage.message_id;
       }
@@ -152,47 +163,11 @@ export class TelegramService implements OnModuleInit {
       try {
         const sentMessage = await ctx.reply(menuText, {
           parse_mode: 'Markdown',
-          reply_markup: { inline_keyboard: keyboard },
+          reply_markup: { inline_keyboard: menuKeyboard },
         });
         userState.mainMessageId = sentMessage.message_id;
       } catch (sendError) {
-        console.error('Failed to send menu:', sendError);
-      }
-    }
-  }
-
-  private async editMainMessage(
-    ctx: any,
-    userId: number,
-    text: string,
-    keyboard: any[] = [],
-  ) {
-    const userState = this.getUserState(userId);
-
-    try {
-      if (userState.mainMessageId) {
-        await ctx.editMessageText(text, {
-          parse_mode: 'Markdown',
-          reply_markup: { inline_keyboard: keyboard },
-        });
-      } else {
-        // Fallback: send new message if no main message ID
-        const sentMessage = await ctx.reply(text, {
-          parse_mode: 'Markdown',
-          reply_markup: { inline_keyboard: keyboard },
-        });
-        userState.mainMessageId = sentMessage.message_id;
-      }
-    } catch (error) {
-      // If edit fails, send new message and update ID
-      try {
-        const sentMessage = await ctx.reply(text, {
-          parse_mode: 'Markdown',
-          reply_markup: { inline_keyboard: keyboard },
-        });
-        userState.mainMessageId = sentMessage.message_id;
-      } catch (sendError) {
-        console.error('Failed to edit/send message:', sendError);
+        console.error('Failed to update menu:', sendError);
       }
     }
   }
@@ -205,20 +180,21 @@ export class TelegramService implements OnModuleInit {
       await ctx.scene.leave();
     }
 
-    // Clear main message ID to force new message
-    const userState = this.getUserState(userId);
-    userState.mainMessageId = undefined;
-
-    // Send fresh main menu
-    await this.sendOrEditMainMenu(ctx, userId);
+    // Update to main menu
+    await this.updateMainMenu(ctx, userId);
   }
 
   private setupCommands() {
     this.bot.command('start', async (ctx) => {
       const userId = ctx.from.id;
 
-      // Send introduction message with button
-      await ctx.reply(
+      // Initialize user state
+      this.getUserState(userId);
+
+      // Send main menu directly
+      await this.updateMainMenu(
+        ctx,
+        userId,
         `🔌 *به ربات اطلاع رسانی برنامه قطعی برق کرمانشاه خوش آمدید!*
 
 با این ربات می‌تونید:
@@ -226,15 +202,7 @@ export class TelegramService implements OnModuleInit {
 🏠 چندین قبض رو ذخیره و مدیریت کنید
 📊 گزارش‌ سریع از برنامه قطعی برق امروز روی تمام قبوض خود دریافت کنید
 
-برای ادامه، روی دکمه زیر کلیک کنید:`,
-        {
-          parse_mode: 'Markdown',
-          reply_markup: {
-            inline_keyboard: [
-              [{ text: '📱 باز کردن منو', callback_data: 'show_menu' }],
-            ],
-          },
-        },
+برای ادامه از دکمه‌های زیر استفاده کنید:`,
       );
     });
 
@@ -244,13 +212,6 @@ export class TelegramService implements OnModuleInit {
   }
 
   private setupCallbacks() {
-    // Add new callback for the start button
-    this.bot.action('show_menu', async (ctx) => {
-      await ctx.answerCbQuery();
-      const userId = ctx.from.id;
-      await this.sendOrEditMainMenu(ctx, userId);
-    });
-
     // Quick check - show bills with date options
     this.bot.action('quick_check', async (ctx) => {
       await ctx.answerCbQuery();
@@ -258,11 +219,10 @@ export class TelegramService implements OnModuleInit {
       const entries = await this.storageService.getEntries(userId);
 
       if (!entries.length) {
-        await this.editMainMessage(
+        await this.updateMainMenu(
           ctx,
           userId,
           '❌ هیچ قبضی ذخیره نشده است.\nابتدا یک قبض اضافه کنید.',
-          [[{ text: '🔙 بازگشت', callback_data: 'back_to_main' }]],
         );
         return;
       }
@@ -272,7 +232,7 @@ export class TelegramService implements OnModuleInit {
       ]);
       keyboard.push([{ text: '🔙 بازگشت', callback_data: 'back_to_main' }]);
 
-      await this.editMainMessage(
+      await this.updateMainMenu(
         ctx,
         userId,
         '⚡ *بررسی سریع قطعی*\n\nیک قبض انتخاب کنید:',
@@ -301,7 +261,7 @@ export class TelegramService implements OnModuleInit {
         [{ text: '🔙 بازگشت', callback_data: 'quick_check' }],
       ];
 
-      await this.editMainMessage(
+      await this.updateMainMenu(
         ctx,
         userId,
         `🏠 *${entries[billIndex].alias}*\n📋 شناسه: \`${entries[billIndex].billId}\`\n\n📅 تاریخ مورد نظر را انتخاب کنید:`,
@@ -332,7 +292,7 @@ export class TelegramService implements OnModuleInit {
         const billEntry = entries[billIndex];
 
         try {
-          await this.editMainMessage(
+          await this.updateMainMenu(
             ctx,
             userId,
             `⏳ *در حال دریافت برنامه قطعی...*\n\n🏠 ${billEntry.alias}\n📋 ${billEntry.billId}`,
@@ -386,9 +346,9 @@ export class TelegramService implements OnModuleInit {
             [{ text: '🔙 بازگشت', callback_data: `quick_bill_${billIndex}` }],
           ];
 
-          await this.editMainMessage(ctx, userId, resultMessage, keyboard);
+          await this.updateMainMenu(ctx, userId, resultMessage, keyboard);
         } catch (error) {
-          await this.editMainMessage(
+          await this.updateMainMenu(
             ctx,
             userId,
             `❌ *خطا در دریافت اطلاعات*\n\n🏠 ${billEntry.alias}\n\nلطفاً دوباره تلاش کنید.`,
@@ -416,11 +376,10 @@ export class TelegramService implements OnModuleInit {
       const entries = await this.storageService.getEntries(userId);
 
       if (!entries.length) {
-        await this.editMainMessage(
+        await this.updateMainMenu(
           ctx,
           userId,
           '❌ هیچ قبضی برای حذف وجود ندارد.',
-          [[{ text: '🔙 بازگشت', callback_data: 'back_to_main' }]],
         );
         return;
       }
@@ -433,7 +392,7 @@ export class TelegramService implements OnModuleInit {
       ]);
       keyboard.push([{ text: '🔙 بازگشت', callback_data: 'back_to_main' }]);
 
-      await this.editMainMessage(
+      await this.updateMainMenu(
         ctx,
         userId,
         '🗑 *مدیریت قبوض*\n\nبرای حذف، روی قبض مورد نظر کلیک کنید:',
@@ -455,9 +414,7 @@ export class TelegramService implements OnModuleInit {
       );
 
       if (currentIndex === -1) {
-        await this.editMainMessage(ctx, userId, '❌ قبض مورد نظر یافت نشد.', [
-          [{ text: '🔙 بازگشت', callback_data: 'manage_bills' }],
-        ]);
+        await this.updateMainMenu(ctx, userId, '❌ قبض مورد نظر یافت نشد.');
         return;
       }
 
@@ -468,7 +425,7 @@ export class TelegramService implements OnModuleInit {
         ],
       ];
 
-      await this.editMainMessage(
+      await this.updateMainMenu(
         ctx,
         userId,
         `🗑 *تأیید حذف*\n\nآیا مطمئنید که می‌خواهید قبض "${entries[currentIndex].alias}" را حذف کنید؟`,
@@ -487,42 +444,26 @@ export class TelegramService implements OnModuleInit {
         const index = entries.findIndex((entry) => entry.billId === billId);
 
         if (index === -1) {
-          await this.editMainMessage(ctx, userId, '❌ قبض مورد نظر یافت نشد.', [
-            [{ text: '🔙 بازگشت', callback_data: 'manage_bills' }],
-          ]);
+          await this.updateMainMenu(ctx, userId, '❌ قبض مورد نظر یافت نشد.');
           return;
         }
 
         const success = await this.storageService.deleteEntry(userId, index);
         if (success) {
-          await this.editMainMessage(ctx, userId, '✅ *قبض با موفقیت حذف شد*', [
-            [{ text: '🏠 منوی اصلی', callback_data: 'back_to_main' }],
-          ]);
+          await this.updateMainMenu(ctx, userId, '✅ *قبض با موفقیت حذف شد*');
         } else {
-          await this.editMainMessage(
+          await this.updateMainMenu(
             ctx,
             userId,
             '❌ *خطا در حذف قبض*\n\nلطفاً دوباره تلاش کنید.',
-            [
-              [
-                { text: '🔙 مدیریت قبوض', callback_data: 'manage_bills' },
-                { text: '🏠 منوی اصلی', callback_data: 'back_to_main' },
-              ],
-            ],
           );
         }
       } catch (error) {
         console.error('Error deleting entry:', error);
-        await this.editMainMessage(
+        await this.updateMainMenu(
           ctx,
           userId,
           '❌ *خطا در حذف قبض*\n\nلطفاً دوباره تلاش کنید.',
-          [
-            [
-              { text: '🔙 مدیریت قبوض', callback_data: 'manage_bills' },
-              { text: '🏠 منوی اصلی', callback_data: 'back_to_main' },
-            ],
-          ],
         );
       }
     });
@@ -544,7 +485,7 @@ export class TelegramService implements OnModuleInit {
 /start - شروع مجدد
 /menu - نمایش منو`;
 
-      await this.editMainMessage(ctx, ctx.from.id, helpText, [
+      await this.updateMainMenu(ctx, ctx.from.id, helpText, [
         [{ text: '🔙 بازگشت', callback_data: 'back_to_main' }],
       ]);
     });
@@ -563,13 +504,11 @@ export class TelegramService implements OnModuleInit {
       const entries = await this.storageService.getEntries(userId);
 
       if (!entries.length) {
-        await this.editMainMessage(ctx, userId, '❌ هیچ قبضی ذخیره نشده است.', [
-          [{ text: '🔙 بازگشت', callback_data: 'back_to_main' }],
-        ]);
+        await this.updateMainMenu(ctx, userId, '❌ هیچ قبضی ذخیره نشده است.');
         return;
       }
 
-      await this.editMainMessage(
+      await this.updateMainMenu(
         ctx,
         userId,
         '⏳ *در حال تهیه گزارش امروز همه...*\nلطفاً منتظر بمانید.',
@@ -595,15 +534,14 @@ export class TelegramService implements OnModuleInit {
         reportMessage +=
           '⚠️ *توجه:* این اطلاعات ممکن است دقیق نباشند و قطعی‌های خارج از برنامه احتمالی هستند.';
 
-        await this.editMainMessage(ctx, userId, reportMessage, [
+        await this.updateMainMenu(ctx, userId, reportMessage, [
           [{ text: '🔙 بازگشت', callback_data: 'back_to_main' }],
         ]);
       } catch (error) {
-        await this.editMainMessage(
+        await this.updateMainMenu(
           ctx,
           userId,
           '❌ *خطا در تهیه گزارش*\nلطفاً دوباره تلاش کنید.',
-          [[{ text: '🔙 بازگشت', callback_data: 'back_to_main' }]],
         );
       }
     });
@@ -612,7 +550,7 @@ export class TelegramService implements OnModuleInit {
     this.bot.action('back_to_main', async (ctx) => {
       await ctx.answerCbQuery();
       const userId = ctx.from.id;
-      await this.sendOrEditMainMenu(ctx, userId);
+      await this.updateMainMenu(ctx, userId);
     });
 
     // Handle bill selection (direct click on bill buttons)
@@ -636,7 +574,7 @@ export class TelegramService implements OnModuleInit {
         [{ text: '🔙 بازگشت', callback_data: 'back_to_main' }],
       ];
 
-      await this.editMainMessage(
+      await this.updateMainMenu(
         ctx,
         userId,
         `🏠 *${entries[billIndex].alias}*\n📋 شناسه: \`${entries[billIndex].billId}\`\n\n📅 تاریخ مورد نظر را انتخاب کنید:`,
@@ -644,7 +582,7 @@ export class TelegramService implements OnModuleInit {
       );
     });
 
-    // Handle cancel wizard - return to main menu using the new method
+    // Handle cancel wizard - return to main menu
     this.bot.action('cancel_wizard', async (ctx) => {
       await ctx.answerCbQuery('بازگشت به منوی اصلی...');
       await this.returnToMainMenu(ctx);
@@ -686,17 +624,12 @@ export class TelegramService implements OnModuleInit {
     const addBillWizard = new Scenes.WizardScene<WizardContext>(
       'ADD_BILL_WIZARD',
       async (ctx) => {
-        // Send separate message for wizard instead of editing main message
-        await ctx.reply(
+        // Update main menu to show wizard state
+        await this.updateMainMenu(
+          ctx,
+          ctx.from.id,
           '➕ *افزودن قبض جدید*\n\n📋 لطفاً شناسه قبض خود را در قسمت چت وارد کنید:\n\n💡 *راهنما:* شناسه قبض یک عدد ۱۳ رقمی است.',
-          {
-            parse_mode: 'Markdown',
-            reply_markup: {
-              inline_keyboard: [
-                [{ text: '❌ انصراف', callback_data: 'cancel_wizard' }],
-              ],
-            },
-          },
+          [[{ text: '❌ انصراف', callback_data: 'cancel_wizard' }]],
         );
         return ctx.wizard.next();
       },
@@ -729,16 +662,11 @@ export class TelegramService implements OnModuleInit {
         const billId = ctx.message.text;
 
         if (!billId.match(/^\d+$/)) {
-          await ctx.reply(
+          await this.updateMainMenu(
+            ctx,
+            ctx.from.id,
             '❌ *شناسه قبض نامعتبر*\n\nلطفاً فقط عدد وارد کنید.',
-            {
-              parse_mode: 'Markdown',
-              reply_markup: {
-                inline_keyboard: [
-                  [{ text: '❌ انصراف', callback_data: 'cancel_wizard' }],
-                ],
-              },
-            },
+            [[{ text: '❌ انصراف', callback_data: 'cancel_wizard' }]],
           );
           return;
         }
@@ -747,31 +675,22 @@ export class TelegramService implements OnModuleInit {
         const userId = ctx.from.id;
         const entries = await this.storageService.getEntries(userId);
         if (entries.some((e) => e.billId === billId)) {
-          await ctx.reply(
+          await this.updateMainMenu(
+            ctx,
+            userId,
             '⚠️ *شناسه قبض تکراری*\n\nاین شناسه قبض قبلاً ثبت شده است. لطفاً شناسه قبض دیگری وارد کنید.',
-            {
-              parse_mode: 'Markdown',
-              reply_markup: {
-                inline_keyboard: [
-                  [{ text: '❌ انصراف', callback_data: 'cancel_wizard' }],
-                ],
-              },
-            },
+            [[{ text: '❌ انصراف', callback_data: 'cancel_wizard' }]],
           );
           return;
         }
 
         (ctx.wizard.state as { billId?: string }).billId = billId;
-        await ctx.reply(
+
+        await this.updateMainMenu(
+          ctx,
+          userId,
           '🏷 *نام مستعار*\n\nلطفاً یک نام کوتاه و قابل تشخیص برای این قبض وارد کنید:\n\n💡 *مثال:* خانه، دفتر، مغازه',
-          {
-            parse_mode: 'Markdown',
-            reply_markup: {
-              inline_keyboard: [
-                [{ text: '❌ انصراف', callback_data: 'cancel_wizard' }],
-              ],
-            },
-          },
+          [[{ text: '❌ انصراف', callback_data: 'cancel_wizard' }]],
         );
         return ctx.wizard.next();
       },
@@ -810,32 +729,22 @@ export class TelegramService implements OnModuleInit {
 
         const entries = await this.storageService.getEntries(userId);
         if (entries.some((e) => e.alias === alias)) {
-          await ctx.reply(
+          await this.updateMainMenu(
+            ctx,
+            userId,
             '⚠️ *نام تکراری*\n\nاین نام قبلاً استفاده شده. لطفاً نام دیگری انتخاب کنید.',
-            {
-              parse_mode: 'Markdown',
-              reply_markup: {
-                inline_keyboard: [
-                  [{ text: '❌ انصراف', callback_data: 'cancel_wizard' }],
-                ],
-              },
-            },
+            [[{ text: '❌ انصراف', callback_data: 'cancel_wizard' }]],
           );
           return;
         }
 
         await this.storageService.saveEntry(userId, { alias, billId });
 
-        await ctx.reply(
+        await this.updateMainMenu(
+          ctx,
+          userId,
           `✅ *قبض با موفقیت ذخیره شد!*\n\n🏠 نام: ${alias}\n📋 شناسه: \`${billId}\``,
-          {
-            parse_mode: 'Markdown',
-            reply_markup: {
-              inline_keyboard: [
-                [{ text: '🔙 بازگشت به منو', callback_data: 'back_to_main' }],
-              ],
-            },
-          },
+          [[{ text: '🔙 بازگشت به منو', callback_data: 'back_to_main' }]],
         );
         return ctx.scene.leave();
       },
