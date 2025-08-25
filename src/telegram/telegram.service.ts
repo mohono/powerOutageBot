@@ -197,6 +197,22 @@ export class TelegramService implements OnModuleInit {
     }
   }
 
+  private async returnToMainMenu(ctx: any) {
+    const userId = ctx.from.id;
+
+    // Leave any active scene
+    if (ctx.scene) {
+      await ctx.scene.leave();
+    }
+
+    // Clear main message ID to force new message
+    const userState = this.getUserState(userId);
+    userState.mainMessageId = undefined;
+
+    // Send fresh main menu
+    await this.sendOrEditMainMenu(ctx, userId);
+  }
+
   private setupCommands() {
     this.bot.command('start', async (ctx) => {
       const userId = ctx.from.id;
@@ -223,8 +239,7 @@ export class TelegramService implements OnModuleInit {
     });
 
     this.bot.command('menu', async (ctx) => {
-      const userId = ctx.from.id;
-      await this.sendOrEditMainMenu(ctx, userId);
+      await this.returnToMainMenu(ctx);
     });
   }
 
@@ -581,6 +596,12 @@ export class TelegramService implements OnModuleInit {
         keyboard,
       );
     });
+
+    // Handle cancel wizard - return to main menu using the new method
+    this.bot.action('cancel_wizard', async (ctx) => {
+      await ctx.answerCbQuery('بازگشت به منوی اصلی...');
+      await this.returnToMainMenu(ctx);
+    });
   }
 
   private async fetchOutageData(billId: string, date: string) {
@@ -618,13 +639,17 @@ export class TelegramService implements OnModuleInit {
     const addBillWizard = new Scenes.WizardScene<WizardContext>(
       'ADD_BILL_WIZARD',
       async (ctx) => {
-        const userId = ctx.from.id;
-
-        await this.editMainMessage(
-          ctx,
-          userId,
-          '➕ *افزودن قبض جدید*\n\n📋 لطفاً شناسه قبض خود را در قسمت چت وارد کنید:\n\n💡 *راهنما:* شناسه قبض یک عدد ۱۳ رقمی است.',
-          [[{ text: '❌ انصراف', callback_data: 'cancel_wizard' }]],
+        // Send separate message for wizard instead of editing main message
+        await ctx.reply(
+          '➕ *افزودن قبض جدید*\n\n📋 لطفاً شناسه قبض خود را در قسمت چت وارد کنید:\n\n💡 *راهنما:* شناسه قبض یک عدد ۱۳ رقمی است.\n\n💬 برای بازگشت به منو، دستور /menu را ارسال کنید.',
+          {
+            parse_mode: 'Markdown',
+            reply_markup: {
+              inline_keyboard: [
+                [{ text: '❌ انصراف', callback_data: 'cancel_wizard' }],
+              ],
+            },
+          },
         );
         return ctx.wizard.next();
       },
@@ -635,8 +660,17 @@ export class TelegramService implements OnModuleInit {
           ctx.callbackQuery.data === 'cancel_wizard'
         ) {
           await ctx.answerCbQuery();
-          const userId = ctx.from.id;
-          await this.sendOrEditMainMenu(ctx, userId);
+          await this.returnToMainMenu(ctx);
+          return ctx.scene.leave();
+        }
+
+        // Handle /menu command in wizard
+        if (
+          ctx.message &&
+          'text' in ctx.message &&
+          ctx.message.text === '/menu'
+        ) {
+          await this.returnToMainMenu(ctx);
           return ctx.scene.leave();
         }
 
@@ -648,12 +682,16 @@ export class TelegramService implements OnModuleInit {
         const billId = ctx.message.text;
 
         if (!billId.match(/^\d+$/)) {
-          const userId = ctx.from.id;
-          await this.editMainMessage(
-            ctx,
-            userId,
-            '❌ *شناسه قبض نامعتبر*\n\nلطفاً فقط عدد وارد کنید.',
-            [[{ text: '❌ انصراف', callback_data: 'cancel_wizard' }]],
+          await ctx.reply(
+            '❌ *شناسه قبض نامعتبر*\n\nلطفاً فقط عدد وارد کنید.\n\n💬 برای بازگشت به منو، دستور /menu را ارسال کنید.',
+            {
+              parse_mode: 'Markdown',
+              reply_markup: {
+                inline_keyboard: [
+                  [{ text: '❌ انصراف', callback_data: 'cancel_wizard' }],
+                ],
+              },
+            },
           );
           return;
         }
@@ -662,21 +700,31 @@ export class TelegramService implements OnModuleInit {
         const userId = ctx.from.id;
         const entries = await this.storageService.getEntries(userId);
         if (entries.some((e) => e.billId === billId)) {
-          await this.editMainMessage(
-            ctx,
-            userId,
-            '⚠️ *شناسه قبض تکراری*\n\nاین شناسه قبض قبلاً ثبت شده است. لطفاً شناسه قبض دیگری وارد کنید.',
-            [[{ text: '❌ انصراف', callback_data: 'cancel_wizard' }]],
+          await ctx.reply(
+            '⚠️ *شناسه قبض تکراری*\n\nاین شناسه قبض قبلاً ثبت شده است. لطفاً شناسه قبض دیگری وارد کنید.\n\n💬 برای بازگشت به منو، دستور /menu را ارسال کنید.',
+            {
+              parse_mode: 'Markdown',
+              reply_markup: {
+                inline_keyboard: [
+                  [{ text: '❌ انصراف', callback_data: 'cancel_wizard' }],
+                ],
+              },
+            },
           );
           return;
         }
 
         (ctx.wizard.state as { billId?: string }).billId = billId;
-        await this.editMainMessage(
-          ctx,
-          userId,
-          '🏷 *نام مستعار*\n\nلطفاً یک نام کوتاه و قابل تشخیص برای این قبض وارد کنید:\n\n💡 *مثال:* خانه، دفتر، مغازه',
-          [[{ text: '❌ انصراف', callback_data: 'cancel_wizard' }]],
+        await ctx.reply(
+          '🏷 *نام مستعار*\n\nلطفاً یک نام کوتاه و قابل تشخیص برای این قبض وارد کنید:\n\n💡 *مثال:* خانه، دفتر، مغازه\n\n💬 برای بازگشت به منو، دستور /menu را ارسال کنید.',
+          {
+            parse_mode: 'Markdown',
+            reply_markup: {
+              inline_keyboard: [
+                [{ text: '❌ انصراف', callback_data: 'cancel_wizard' }],
+              ],
+            },
+          },
         );
         return ctx.wizard.next();
       },
@@ -687,8 +735,17 @@ export class TelegramService implements OnModuleInit {
           ctx.callbackQuery.data === 'cancel_wizard'
         ) {
           await ctx.answerCbQuery();
-          const userId = ctx.from.id;
-          await this.sendOrEditMainMenu(ctx, userId);
+          await this.returnToMainMenu(ctx);
+          return ctx.scene.leave();
+        }
+
+        // Handle /menu command in wizard
+        if (
+          ctx.message &&
+          'text' in ctx.message &&
+          ctx.message.text === '/menu'
+        ) {
+          await this.returnToMainMenu(ctx);
           return ctx.scene.leave();
         }
 
@@ -706,37 +763,36 @@ export class TelegramService implements OnModuleInit {
 
         const entries = await this.storageService.getEntries(userId);
         if (entries.some((e) => e.alias === alias)) {
-          await this.editMainMessage(
-            ctx,
-            userId,
-            '⚠️ *نام تکراری*\n\nاین نام قبلاً استفاده شده. لطفاً نام دیگری انتخاب کنید.',
-            [[{ text: '❌ انصراف', callback_data: 'cancel_wizard' }]],
+          await ctx.reply(
+            '⚠️ *نام تکراری*\n\nاین نام قبلاً استفاده شده. لطفاً نام دیگری انتخاب کنید.\n\n💬 برای بازگشت به منو، دستور /menu را ارسال کنید.',
+            {
+              parse_mode: 'Markdown',
+              reply_markup: {
+                inline_keyboard: [
+                  [{ text: '❌ انصراف', callback_data: 'cancel_wizard' }],
+                ],
+              },
+            },
           );
           return;
         }
 
         await this.storageService.saveEntry(userId, { alias, billId });
 
-        await this.editMainMessage(
-          ctx,
-          userId,
+        await ctx.reply(
           `✅ *قبض با موفقیت ذخیره شد!*\n\n🏠 نام: ${alias}\n📋 شناسه: \`${billId}\``,
-          [[{ text: '🔙 بازگشت به منو', callback_data: 'back_to_main' }]],
+          {
+            parse_mode: 'Markdown',
+            reply_markup: {
+              inline_keyboard: [
+                [{ text: '🔙 بازگشت به منو', callback_data: 'back_to_main' }],
+              ],
+            },
+          },
         );
         return ctx.scene.leave();
       },
     );
-
-    // Handle cancel wizard callback
-    this.bot.action('cancel_wizard', async (ctx) => {
-      await ctx.answerCbQuery();
-      const userId = ctx.from.id;
-      await this.sendOrEditMainMenu(ctx, userId);
-      // Leave scene if in wizard
-      if (ctx.scene) {
-        await ctx.scene.leave();
-      }
-    });
 
     const stage = new Scenes.Stage<WizardContext>([addBillWizard]);
     this.bot.use(stage.middleware());
