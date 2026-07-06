@@ -8,4 +8,6 @@ RUN npm ci --legacy-peer-deps
 COPY . .
 RUN npm run build
 
-CMD ["node", "dist/main"]
+EXPOSE 3000
+
+CMD ["npm", "start"]
