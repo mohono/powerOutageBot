@@ -24,6 +24,7 @@ interface UserState {
   lastReportDate?: string;
   pdfData?: any[];
   selectedAreas?: string[];
+  sentMessageIds: number[];
 }
 
 interface OutageArea {
@@ -63,6 +64,7 @@ export class TelegramService implements OnModuleInit {
         reportCount: 0,
         lastReportDate: this.getCurrentDate(),
         selectedAreas: [],
+        sentMessageIds: [],
       });
     }
 
@@ -137,6 +139,7 @@ export class TelegramService implements OnModuleInit {
 
     keyboard.push([
       { text: '❓ راهنما', callback_data: 'help' },
+      { text: '🧹 پاکسازی', callback_data: 'cleanup' },
     ]);
 
     return keyboard;
@@ -167,19 +170,44 @@ export class TelegramService implements OnModuleInit {
           reply_markup: { inline_keyboard: menuKeyboard },
         });
         userState.mainMessageId = sentMessage.message_id;
+        userState.sentMessageIds.push(sentMessage.message_id);
       }
     } catch (error) {
-      // If edit fails (message too old or deleted), send new message
+      // If edit fails (message too old or deleted), delete old and send new
+      if (userState.mainMessageId) {
+        ctx.telegram
+          .deleteMessage(ctx.chat.id, userState.mainMessageId)
+          .catch(() => {});
+      }
       try {
         const sentMessage = await ctx.reply(menuText, {
           parse_mode: 'Markdown',
           reply_markup: { inline_keyboard: menuKeyboard },
         });
         userState.mainMessageId = sentMessage.message_id;
+        userState.sentMessageIds.push(sentMessage.message_id);
       } catch (sendError) {
         console.error('Failed to update menu:', sendError);
       }
     }
+  }
+
+  private async replyTemp(ctx: any, text: string, delayMs = 2000) {
+    const userId = ctx.from.id;
+    const userState = this.getUserState(userId);
+    const msg = await ctx.reply(text, { parse_mode: 'Markdown' });
+    userState.sentMessageIds.push(msg.message_id);
+    setTimeout(() => {
+      ctx.telegram.deleteMessage(ctx.chat.id, msg.message_id).catch(() => {});
+    }, delayMs);
+  }
+
+  private deleteUserMessage(ctx: any, delayMs = 2000) {
+    setTimeout(() => {
+      ctx.telegram
+        .deleteMessage(ctx.chat.id, ctx.message.message_id)
+        .catch(() => {});
+    }, delayMs);
   }
 
   private async returnToMainMenu(ctx: any) {
@@ -299,10 +327,6 @@ export class TelegramService implements OnModuleInit {
     this.bot.command('start', async (ctx) => {
       const userId = ctx.from.id;
 
-      // Initialize user state
-      this.getUserState(userId);
-
-      // Send main menu directly
       await this.updateMainMenu(ctx, userId,
         `🔌 *به ربات اطلاع رسانی برنامه قطعی برق کرمانشاه خوش آمدید!*
 
@@ -342,13 +366,38 @@ export class TelegramService implements OnModuleInit {
   private setupCallbacks() {
     // Back to main menu
     this.bot.action('back_to_main', async (ctx) => {
-      await ctx.answerCbQuery();
+      ctx.answerCbQuery().catch(() => {});
       await this.returnToMainMenu(ctx);
+    });
+
+    // Cleanup - delete all messages and show fresh menu
+    this.bot.action('cleanup', async (ctx) => {
+      ctx.answerCbQuery().catch(() => {});
+      const userId = ctx.from.id;
+      const userState = this.getUserState(userId);
+
+      // Delete the current menu message
+      if (userState.mainMessageId) {
+        ctx.telegram
+          .deleteMessage(ctx.chat.id, userState.mainMessageId)
+          .catch(() => {});
+      }
+      // Delete all other tracked messages
+      for (const msgId of userState.sentMessageIds) {
+        ctx.telegram.deleteMessage(ctx.chat.id, msgId).catch(() => {});
+      }
+
+      // Reset state
+      userState.mainMessageId = undefined;
+      userState.sentMessageIds = [];
+
+      // Send fresh main menu
+      await this.updateMainMenu(ctx, userId);
     });
 
     // Help callback
     this.bot.action('help', async (ctx) => {
-      await ctx.answerCbQuery();
+      ctx.answerCbQuery().catch(() => {});
       const userId = ctx.from.id;
       const helpText = `❓ *راهنمای ربات*
 
@@ -366,12 +415,12 @@ export class TelegramService implements OnModuleInit {
 
     // Quick check all bills
     this.bot.action('quick_check', async (ctx) => {
-      await ctx.answerCbQuery();
+      ctx.answerCbQuery().catch(() => {});
       const userId = ctx.from.id;
       const entries = await this.storageService.getEntries(userId);
       
       if (entries.length === 0) {
-        await ctx.reply('❌ شما هنوز قبضی ذخیره نکرده‌اید. ابتدا یک قبض اضافه کنید.');
+        this.replyTemp(ctx, '❌ شما هنوز قبضی ذخیره نکرده‌اید. ابتدا یک قبض اضافه کنید.');
         return;
       }
       
@@ -399,7 +448,7 @@ export class TelegramService implements OnModuleInit {
 
     // Add bill callback
     this.bot.action('add_bill', async (ctx) => {
-      await ctx.answerCbQuery();
+      ctx.answerCbQuery().catch(() => {});
       const userId = ctx.from.id;
       
       await this.updateMainMenu(
@@ -414,12 +463,12 @@ export class TelegramService implements OnModuleInit {
 
     // Manage bills callback
     this.bot.action('manage_bills', async (ctx) => {
-      await ctx.answerCbQuery();
+      ctx.answerCbQuery().catch(() => {});
       const userId = ctx.from.id;
       const entries = await this.storageService.getEntries(userId);
       
       if (entries.length === 0) {
-        await ctx.reply('❌ شما هنوز قبضی ذخیره نکرده‌اید.');
+        this.replyTemp(ctx, '❌ شما هنوز قبضی ذخیره نکرده‌اید.');
         return;
       }
       
@@ -438,19 +487,19 @@ export class TelegramService implements OnModuleInit {
 
     // Full report for today
     this.bot.action('full_report', async (ctx) => {
-      await ctx.answerCbQuery();
+      ctx.answerCbQuery().catch(() => {});
       const userId = ctx.from.id;
       const { allowed, message: limitMsg } = this.canUserRequestReport(userId);
       
       if (!allowed) {
-        await ctx.reply(limitMsg);
+        this.replyTemp(ctx, limitMsg);
         return;
       }
       
       const entries = await this.storageService.getEntries(userId);
       
       if (entries.length === 0) {
-        await ctx.reply('❌ شما هنوز قبضی ذخیره نکرده‌اید.');
+        this.replyTemp(ctx, '❌ شما هنوز قبضی ذخیره نکرده‌اید.');
         return;
       }
       
@@ -477,96 +526,108 @@ export class TelegramService implements OnModuleInit {
       await this.updateMainMenu(ctx, userId, message);
     });
 
+    // Delete bill (must be before bill_(\d+) to avoid regex collision)
+    this.bot.action(/delete_bill_(\d+)/, async (ctx) => {
+      ctx.answerCbQuery().catch(() => {});
+      const userId = ctx.from.id;
+      const index = parseInt(ctx.match[1]);
+
+      const success = await this.storageService.deleteEntry(userId, index);
+      
+      if (success) {
+        this.replyTemp(ctx, '✅ قبض با موفقیت حذف شد.');
+      } else {
+        this.replyTemp(ctx, '❌ خطا در حذف قبض.');
+      }
+
+      await this.returnToMainMenu(ctx);
+    });
+
     // Handle bill selection
     this.bot.action(/bill_(\d+)/, async (ctx) => {
-      await ctx.answerCbQuery();
+      ctx.answerCbQuery().catch(() => {});
       const userId = ctx.from.id;
       const index = parseInt(ctx.match[1]);
       const entries = await this.storageService.getEntries(userId);
       const entry = entries[index];
-      
+
       if (!entry) {
-        await ctx.reply('❌ قبض یافت نشد.');
+        this.replyTemp(ctx, '❌ قبض یافت نشد.');
         return;
       }
-      
+
       const today = this.formatPersianDate('today');
       const tomorrow = this.formatPersianDate('tomorrow');
       const dayAfter = this.formatPersianDate('dayafter');
-      
+
       let message = `🏠 *${entry.alias}*\n`;
       message += `📌 شناسه قبض: ${entry.billId}\n\n`;
-      
+
       try {
         const todayOutages = await this.fetchOutageData(entry.billId, today);
-        const tomorrowOutages = await this.fetchOutageData(entry.billId, tomorrow);
-        const dayAfterOutages = await this.fetchOutageData(entry.billId, dayAfter);
-        
+        const tomorrowOutages = await this.fetchOutageData(
+          entry.billId,
+          tomorrow,
+        );
+        const dayAfterOutages = await this.fetchOutageData(
+          entry.billId,
+          dayAfter,
+        );
+
         message += `📅 *امروز (${today}):*\n`;
         if (todayOutages.length > 0) {
-          todayOutages.forEach(time => { message += `  🔴 ${time}\n`; });
+          todayOutages.forEach((time) => {
+            message += `  🔴 ${time}\n`;
+          });
         } else {
           message += '  ✅ بدون قطعی\n';
         }
-        
+
         message += `\n📅 *فردا (${tomorrow}):*\n`;
         if (tomorrowOutages.length > 0) {
-          tomorrowOutages.forEach(time => { message += `  🔴 ${time}\n`; });
+          tomorrowOutages.forEach((time) => {
+            message += `  🔴 ${time}\n`;
+          });
         } else {
           message += '  ✅ بدون قطعی\n';
         }
-        
+
         message += `\n📅 *پس فردا (${dayAfter}):*\n`;
         if (dayAfterOutages.length > 0) {
-          dayAfterOutages.forEach(time => { message += `  🔴 ${time}\n`; });
+          dayAfterOutages.forEach((time) => {
+            message += `  🔴 ${time}\n`;
+          });
         } else {
           message += '  ✅ بدون قطعی\n';
         }
       } catch {
         message += '❌ خطا در دریافت اطلاعات قطعی برق.';
       }
-      
+
       const keyboard = [
         [
           { text: '🔄 بروزرسانی', callback_data: `bill_${index}` },
-          { text: '🏠 منوی اصلی', callback_data: 'back_to_main' }
-        ]
+          { text: '🏠 منوی اصلی', callback_data: 'back_to_main' },
+        ],
       ];
-      
-      await this.updateMainMenu(ctx, userId, message, keyboard);
-    });
 
-    // Delete bill
-    this.bot.action(/delete_bill_(\d+)/, async (ctx) => {
-      await ctx.answerCbQuery();
-      const userId = ctx.from.id;
-      const index = parseInt(ctx.match[1]);
-      
-      const success = await this.storageService.deleteEntry(userId, index);
-      
-      if (success) {
-        await ctx.reply('✅ قبض با موفقیت حذف شد.');
-      } else {
-        await ctx.reply('❌ خطا در حذف قبض.');
-      }
-      
-      await this.returnToMainMenu(ctx);
+      await this.updateMainMenu(ctx, userId, message, keyboard);
     });
 
     // PDF schedule callback
     this.bot.action('view_pdf_schedule', async (ctx) => {
-      await ctx.answerCbQuery();
+      ctx.answerCbQuery().catch(() => {});
       await this.showPdfScheduleMenu(ctx);
     });
 
     // Area selection callback
     this.bot.action(/area_(\d+)/, async (ctx) => {
-      await ctx.answerCbQuery();
+      ctx.answerCbQuery().catch(() => {});
       const areaId = parseInt(ctx.match[1]);
       const area = this.outageAreas.find(a => a.id === areaId);
       
       if (!area) {
-        await ctx.reply('❌ منطقه مورد نظر یافت نشد.');
+        this.replyTemp(ctx, '❌ منطقه مورد نظر یافت نشد.');
         return;
       }
       
@@ -616,7 +677,7 @@ export class TelegramService implements OnModuleInit {
 
     // Add to report callback
     this.bot.action(/add_to_report_(\d+)/, async (ctx) => {
-      await ctx.answerCbQuery('✅ به گزارش شما اضافه شد');
+      ctx.answerCbQuery('✅ به گزارش شما اضافه شد').catch(() => {});
       const areaId = parseInt(ctx.match[1]);
       const area = this.outageAreas.find(a => a.id === areaId);
       
@@ -628,18 +689,18 @@ export class TelegramService implements OnModuleInit {
           userState.selectedAreas.push(area.name);
         }
         
-        await ctx.reply(`✅ منطقه "${area.name}" به گزارش شما اضافه شد.`);
+        this.replyTemp(ctx, `✅ منطقه "${area.name}" به گزارش شما اضافه شد.`);
       }
     });
 
     // View my report callback
     this.bot.action('view_my_report', async (ctx) => {
-      await ctx.answerCbQuery();
+      ctx.answerCbQuery().catch(() => {});
       const userId = ctx.from.id;
       const userState = this.getUserState(userId);
       
       if (!userState.selectedAreas || userState.selectedAreas.length === 0) {
-        await ctx.reply('📋 شما هنوز منطقه‌ای به گزارش خود اضافه نکرده‌اید.');
+        this.replyTemp(ctx, '📋 شما هنوز منطقه‌ای به گزارش خود اضافه نکرده‌اید.');
         return;
       }
       
@@ -670,18 +731,18 @@ export class TelegramService implements OnModuleInit {
 
     // Clear report callback
     this.bot.action('clear_report', async (ctx) => {
-      await ctx.answerCbQuery();
+      ctx.answerCbQuery().catch(() => {});
       const userId = ctx.from.id;
       const userState = this.getUserState(userId);
       userState.selectedAreas = [];
       
-      await ctx.reply('✅ گزارش شما پاک شد.');
+      this.replyTemp(ctx, '✅ گزارش شما پاک شد.');
       await this.showPdfScheduleMenu(ctx);
     });
 
     // Area pagination callback
     this.bot.action(/area_page_(\d+)_?(.*)?/, async (ctx) => {
-      await ctx.answerCbQuery();
+      ctx.answerCbQuery().catch(() => {});
       const page = parseInt(ctx.match[1]);
       const searchQuery = ctx.match[2] || '';
       
@@ -699,7 +760,7 @@ export class TelegramService implements OnModuleInit {
 
     // Area search callback
     this.bot.action('area_search', async (ctx) => {
-      await ctx.answerCbQuery();
+      ctx.answerCbQuery().catch(() => {});
       const userId = ctx.from.id;
       
       await this.updateMainMenu(
@@ -722,6 +783,7 @@ export class TelegramService implements OnModuleInit {
       
       // Check if we're expecting a bill ID
       if (userState.pdfData && userState.pdfData[0] && userState.pdfData[0].expectingBillId) {
+        this.deleteUserMessage(ctx);
         const billId = ctx.message.text.trim();
         userState.pdfData = []; // Reset state
         
@@ -739,26 +801,28 @@ export class TelegramService implements OnModuleInit {
       
       // Check if we're expecting an alias
       if (userState.pdfData && userState.pdfData[0] && userState.pdfData[0].expectingAlias) {
+        this.deleteUserMessage(ctx);
         const alias = ctx.message.text.trim();
         const billId = userState.pdfData[0].newBillId;
         userState.pdfData = []; // Reset state
         
         await this.storageService.saveEntry(userId, { alias, billId });
         
-        await ctx.reply(`✅ قبض "${alias}" با شناسه ${billId} با موفقیت ذخیره شد.`);
+        this.replyTemp(ctx, `✅ قبض "${alias}" با شناسه ${billId} با موفقیت ذخیره شد.`);
         await this.returnToMainMenu(ctx);
         return;
       }
       
       // Check if we're expecting a search query
       if (userState.pdfData && userState.pdfData[0] && userState.pdfData[0].expectingSearch) {
+        this.deleteUserMessage(ctx);
         const searchQuery = ctx.message.text;
         userState.pdfData = []; // Reset state
         
         const filteredAreas = this.searchAreas(searchQuery);
         
         if (filteredAreas.length === 0) {
-          await ctx.reply('❌ منطقه‌ای با این نام یافت نشد.');
+          this.replyTemp(ctx, '❌ منطقه‌ای با این نام یافت نشد.');
           await this.showPdfScheduleMenu(ctx);
           return;
         }
