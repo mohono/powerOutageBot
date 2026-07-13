@@ -1,6 +1,6 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 /* eslint-disable @typescript-eslint/no-unsafe-member-access */
 /* eslint-disable @typescript-eslint/no-unsafe-return */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Injectable } from '@nestjs/common';
 import { promises as fs } from 'fs';
 import * as path from 'path';
@@ -15,8 +15,7 @@ export class StorageService {
   private readonly storagePath = path.join(process.cwd(), 'bills.json');
 
   async getEntries(userId: number): Promise<BillEntry[]> {
-    const data = await fs.readFile(this.storagePath, 'utf8');
-    const allEntries = JSON.parse(data);
+    const allEntries = await this.getAllEntries();
     return allEntries[userId] || [];
   }
 
@@ -40,8 +39,15 @@ export class StorageService {
   }
 
   private async getAllEntries(): Promise<Record<number, BillEntry[]>> {
-    const data = await fs.readFile(this.storagePath, 'utf8');
-    return JSON.parse(data);
+    try {
+      const data = await fs.readFile(this.storagePath, 'utf8');
+      return JSON.parse(data);
+    } catch (err: unknown) {
+      if ((err as any)?.code === 'ENOENT') {
+        return {};
+      }
+      throw err;
+    }
   }
 
   private async saveAllEntries(

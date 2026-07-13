@@ -54,7 +54,11 @@ export class TelegramService implements OnModuleInit {
   }
 
   async onModuleInit() {
-    await this.bot.launch();
+    try {
+      await this.bot.launch();
+    } catch (err) {
+      console.error('Failed to launch bot:', err);
+    }
   }
 
   private setupMiddlewares() {
@@ -448,7 +452,7 @@ export class TelegramService implements OnModuleInit {
 
       for (const entry of entries) {
         try {
-          const outages = await this.fetchOutageData(entry.billId, today);
+          const outages = await this.fetchOutageData(entry.billId);
           if (outages.length > 0) {
             message += `🏠 *${entry.alias}:*\n`;
             outages.forEach((time) => {
@@ -532,7 +536,7 @@ export class TelegramService implements OnModuleInit {
 
       for (const entry of entries) {
         try {
-          const outages = await this.fetchOutageData(entry.billId, today);
+          const outages = await this.fetchOutageData(entry.billId);
           if (outages.length > 0) {
             message += `🏠 *${entry.alias} (${entry.billId}):*\n`;
             outages.forEach((time) => {
@@ -581,44 +585,16 @@ export class TelegramService implements OnModuleInit {
       }
 
       const today = this.formatPersianDate('today');
-      const tomorrow = this.formatPersianDate('tomorrow');
-      const dayAfter = this.formatPersianDate('dayafter');
 
       let message = `🏠 *${entry.alias}*\n`;
       message += `📌 شناسه قبض: ${entry.billId}\n\n`;
 
       try {
-        const todayOutages = await this.fetchOutageData(entry.billId, today);
-        const tomorrowOutages = await this.fetchOutageData(
-          entry.billId,
-          tomorrow,
-        );
-        const dayAfterOutages = await this.fetchOutageData(
-          entry.billId,
-          dayAfter,
-        );
+        const outages = await this.fetchOutageData(entry.billId);
 
-        message += `📅 *امروز (${today}):*\n`;
-        if (todayOutages.length > 0) {
-          todayOutages.forEach((time) => {
-            message += `  🔴 ${time}\n`;
-          });
-        } else {
-          message += '  ✅ بدون قطعی\n';
-        }
-
-        message += `\n📅 *فردا (${tomorrow}):*\n`;
-        if (tomorrowOutages.length > 0) {
-          tomorrowOutages.forEach((time) => {
-            message += `  🔴 ${time}\n`;
-          });
-        } else {
-          message += '  ✅ بدون قطعی\n';
-        }
-
-        message += `\n📅 *پس فردا (${dayAfter}):*\n`;
-        if (dayAfterOutages.length > 0) {
-          dayAfterOutages.forEach((time) => {
+        message += `📅 *برنامه قطعی:*\n`;
+        if (outages.length > 0) {
+          outages.forEach((time) => {
             message += `  🔴 ${time}\n`;
           });
         } else {
@@ -890,14 +866,16 @@ export class TelegramService implements OnModuleInit {
     });
   }
 
-  private async fetchOutageData(billId: string, date: string) {
+  private async fetchOutageData(billId: string) {
     const response = await axios.get(
       'http://85.185.251.108:8007/home/popfeeder',
       {
-        params: { date, id: billId },
+        params: { id: billId },
+        timeout: 10000,
         headers: {
           accept: 'application/json, text/plain, */*',
-          'accept-language': 'en-US,en;q=0.9,de;q=0.8',
+          'accept-language': 'en-US,en;q=0.9,fa-IR;q=0.8,fa;q=0.7',
+          Origin: 'http://www.kpedc.com',
           Referer: 'http://www.kpedc.com/',
           'User-Agent':
             'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36',
