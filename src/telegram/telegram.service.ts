@@ -6,6 +6,9 @@
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
 /* eslint-disable @typescript-eslint/no-unsafe-return */
 /* eslint-disable @typescript-eslint/no-unused-vars */
+/* eslint-disable @typescript-eslint/no-floating-promises */
+/* eslint-disable @typescript-eslint/restrict-template-expressions */
+/* eslint-disable @typescript-eslint/require-await */
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { Telegraf, Scenes, session, Markup } from 'telegraf';
 import axios from 'axios';
@@ -145,10 +148,17 @@ export class TelegramService implements OnModuleInit {
     return keyboard;
   }
 
-  private async updateMainMenu(ctx: any, userId: number, text?: string, keyboard?: any[]) {
+  private async updateMainMenu(
+    ctx: any,
+    userId: number,
+    text?: string,
+    keyboard?: any[],
+  ) {
     const userState = this.getUserState(userId);
-    const menuText = text || '📱 *منوی اصلی*\n\nاز دکمه‌های زیر برای دسترسی سریع استفاده کنید:';
-    const menuKeyboard = keyboard || await this.createMainKeyboard(userId);
+    const menuText =
+      text ||
+      '📱 *منوی اصلی*\n\nاز دکمه‌های زیر برای دسترسی سریع استفاده کنید:';
+    const menuKeyboard = keyboard || (await this.createMainKeyboard(userId));
 
     try {
       if (userState.mainMessageId) {
@@ -161,7 +171,7 @@ export class TelegramService implements OnModuleInit {
           {
             parse_mode: 'Markdown',
             reply_markup: { inline_keyboard: menuKeyboard },
-          }
+          },
         );
       } else {
         // Send new message if no main message exists
@@ -227,10 +237,10 @@ export class TelegramService implements OnModuleInit {
     // This is a simplified parser for the specific PDF format
     // In a real implementation, you would extract text from the actual PDF file
     const pdfText = `...`; // Your PDF text content here
-    
+
     const lines = pdfText.split('\n');
     let currentArea: Partial<OutageArea> = {};
-    
+
     for (const line of lines) {
       // Check if line starts with a number (new area)
       const areaMatch = line.match(/^(\d+)([^\d].*)$/);
@@ -239,15 +249,15 @@ export class TelegramService implements OnModuleInit {
         if (currentArea.name) {
           this.outageAreas.push(currentArea as OutageArea);
         }
-        
+
         // Start new area
         currentArea = {
           id: parseInt(areaMatch[1]),
           name: areaMatch[2].trim(),
           times: [],
-          subAreas: []
+          subAreas: [],
         };
-      } 
+      }
       // Check for time patterns (HH:MM-HH:MM)
       else if (line.match(/\d{2}:\d{2}-\d{2}:\d{2}/)) {
         const times = line.match(/\d{2}:\d{2}-\d{2}:\d{2}/g);
@@ -256,11 +266,14 @@ export class TelegramService implements OnModuleInit {
         }
       }
       // Check for sub-areas (lines that start with special characters)
-      else if (line.match(/^[^a-zA-Z0-9\u0600-\u06FF]/) && currentArea.subAreas) {
+      else if (
+        line.match(/^[^a-zA-Z0-9\u0600-\u06FF]/) &&
+        currentArea.subAreas
+      ) {
         currentArea.subAreas.push(line.trim());
       }
     }
-    
+
     // Add the last area
     if (currentArea.name) {
       this.outageAreas.push(currentArea as OutageArea);
@@ -270,56 +283,57 @@ export class TelegramService implements OnModuleInit {
   // Search areas by name
   private searchAreas(query: string): OutageArea[] {
     if (!query) return this.outageAreas;
-    
-    return this.outageAreas.filter(area => 
-      area.name.includes(query) || 
-      (area.subAreas && area.subAreas.some(sub => sub.includes(query)))
+
+    return this.outageAreas.filter(
+      (area) =>
+        area.name.includes(query) ||
+        (area.subAreas && area.subAreas.some((sub) => sub.includes(query))),
     );
   }
 
   // Generate area selection keyboard
-  private createAreaSelectionKeyboard(areas: OutageArea[], page: number = 0, searchQuery: string = ''): any[] {
+  private createAreaSelectionKeyboard(
+    areas: OutageArea[],
+    page: number = 0,
+    searchQuery: string = '',
+  ): any[] {
     const itemsPerPage = 5;
     const startIdx = page * itemsPerPage;
     const paginatedAreas = areas.slice(startIdx, startIdx + itemsPerPage);
-    
-    const keyboard = paginatedAreas.map(area => [
-      { 
-        text: `${area.id}. ${area.name}`, 
-        callback_data: `area_${area.id}` 
-      }
+
+    const keyboard = paginatedAreas.map((area) => [
+      {
+        text: `${area.id}. ${area.name}`,
+        callback_data: `area_${area.id}`,
+      },
     ]);
-    
+
     // Add pagination controls if needed
     const pagination = [];
     if (page > 0) {
-      pagination.push({ 
-        text: '⬅️ قبلی', 
-        callback_data: `area_page_${page - 1}_${searchQuery}` 
+      pagination.push({
+        text: '⬅️ قبلی',
+        callback_data: `area_page_${page - 1}_${searchQuery}`,
       });
     }
-    
+
     if (startIdx + itemsPerPage < areas.length) {
-      pagination.push({ 
-        text: '➡️ بعدی', 
-        callback_data: `area_page_${page + 1}_${searchQuery}` 
+      pagination.push({
+        text: '➡️ بعدی',
+        callback_data: `area_page_${page + 1}_${searchQuery}`,
       });
     }
-    
+
     if (pagination.length > 0) {
       keyboard.push(pagination);
     }
-    
+
     // Add search button
-    keyboard.push([
-      { text: '🔍 جستجوی مجدد', callback_data: 'area_search' }
-    ]);
-    
+    keyboard.push([{ text: '🔍 جستجوی مجدد', callback_data: 'area_search' }]);
+
     // Add back to main menu
-    keyboard.push([
-      { text: '🏠 منوی اصلی', callback_data: 'back_to_main' }
-    ]);
-    
+    keyboard.push([{ text: '🏠 منوی اصلی', callback_data: 'back_to_main' }]);
+
     return keyboard;
   }
 
@@ -327,7 +341,9 @@ export class TelegramService implements OnModuleInit {
     this.bot.command('start', async (ctx) => {
       const userId = ctx.from.id;
 
-      await this.updateMainMenu(ctx, userId,
+      await this.updateMainMenu(
+        ctx,
+        userId,
         `🔌 *به ربات اطلاع رسانی برنامه قطعی برق کرمانشاه خوش آمدید!*
 
 با این ربات می‌تونید:
@@ -336,7 +352,7 @@ export class TelegramService implements OnModuleInit {
 📊 گزارش‌ سریع از برنامه قطعی برق امروز روی تمام قبوض خود دریافت کنید
 📄 برنامه قطعی برق از طریق فایل PDF رو مشاهده کنید
 
-برای ادامه از دکمه‌های زیر استفاده کنید:`
+برای ادامه از دکمه‌های زیر استفاده کنید:`,
       );
     });
 
@@ -354,12 +370,12 @@ export class TelegramService implements OnModuleInit {
   private async showPdfScheduleMenu(ctx: any) {
     const userId = ctx.from.id;
     const userState = this.getUserState(userId);
-    
+
     await this.updateMainMenu(
       ctx,
       userId,
       '📄 *برنامه قطعی برق از طریق PDF*\n\nلطفاً یک منطقه را انتخاب کنید:',
-      this.createAreaSelectionKeyboard(this.outageAreas)
+      this.createAreaSelectionKeyboard(this.outageAreas),
     );
   }
 
@@ -409,7 +425,7 @@ export class TelegramService implements OnModuleInit {
 📄 *مشاهده برنامه PDF:* برنامه قطعی برق مناطق را ببینید
 
 📌 *نکته:* شناسه قبض را از قبض برق خود پیدا کنید.`;
-      
+
       await this.updateMainMenu(ctx, userId, helpText);
     });
 
@@ -418,21 +434,24 @@ export class TelegramService implements OnModuleInit {
       ctx.answerCbQuery().catch(() => {});
       const userId = ctx.from.id;
       const entries = await this.storageService.getEntries(userId);
-      
+
       if (entries.length === 0) {
-        this.replyTemp(ctx, '❌ شما هنوز قبضی ذخیره نکرده‌اید. ابتدا یک قبض اضافه کنید.');
+        this.replyTemp(
+          ctx,
+          '❌ شما هنوز قبضی ذخیره نکرده‌اید. ابتدا یک قبض اضافه کنید.',
+        );
         return;
       }
-      
+
       const today = this.formatPersianDate('today');
       let message = `⚡ *بررسی سریع قطعی برق - ${today}*\n\n`;
-      
+
       for (const entry of entries) {
         try {
           const outages = await this.fetchOutageData(entry.billId, today);
           if (outages.length > 0) {
             message += `🏠 *${entry.alias}:*\n`;
-            outages.forEach(time => {
+            outages.forEach((time) => {
               message += `  🔴 ${time}\n`;
             });
           } else {
@@ -442,7 +461,7 @@ export class TelegramService implements OnModuleInit {
           message += `🏠 *${entry.alias}:* ❌ خطا در دریافت اطلاعات\n`;
         }
       }
-      
+
       await this.updateMainMenu(ctx, userId, message);
     });
 
@@ -450,14 +469,14 @@ export class TelegramService implements OnModuleInit {
     this.bot.action('add_bill', async (ctx) => {
       ctx.answerCbQuery().catch(() => {});
       const userId = ctx.from.id;
-      
+
       await this.updateMainMenu(
         ctx,
         userId,
         '➕ *افزودن قبض جدید*\n\nلطفاً شناسه قبض خود را وارد کنید:\n(شناسه قبض را از روی قبض برق پیدا کنید)',
-        [[{ text: '🔙 بازگشت', callback_data: 'back_to_main' }]]
+        [[{ text: '🔙 بازگشت', callback_data: 'back_to_main' }]],
       );
-      
+
       this.getUserState(userId).pdfData = [{ expectingBillId: true }];
     });
 
@@ -466,22 +485,27 @@ export class TelegramService implements OnModuleInit {
       ctx.answerCbQuery().catch(() => {});
       const userId = ctx.from.id;
       const entries = await this.storageService.getEntries(userId);
-      
+
       if (entries.length === 0) {
         this.replyTemp(ctx, '❌ شما هنوز قبضی ذخیره نکرده‌اید.');
         return;
       }
-      
+
       let message = '🗑 *مدیریت قبوض*\n\nقبوض ذخیره شده:\n\n';
       const keyboard = [];
-      
+
       entries.forEach((entry, index) => {
         message += `${index + 1}. ${entry.alias} (${entry.billId})\n`;
-        keyboard.push([{ text: `🗑 حذف ${entry.alias}`, callback_data: `delete_bill_${index}` }]);
+        keyboard.push([
+          {
+            text: `🗑 حذف ${entry.alias}`,
+            callback_data: `delete_bill_${index}`,
+          },
+        ]);
       });
-      
+
       keyboard.push([{ text: '🔙 بازگشت', callback_data: 'back_to_main' }]);
-      
+
       await this.updateMainMenu(ctx, userId, message, keyboard);
     });
 
@@ -490,28 +514,28 @@ export class TelegramService implements OnModuleInit {
       ctx.answerCbQuery().catch(() => {});
       const userId = ctx.from.id;
       const { allowed, message: limitMsg } = this.canUserRequestReport(userId);
-      
+
       if (!allowed) {
         this.replyTemp(ctx, limitMsg);
         return;
       }
-      
+
       const entries = await this.storageService.getEntries(userId);
-      
+
       if (entries.length === 0) {
         this.replyTemp(ctx, '❌ شما هنوز قبضی ذخیره نکرده‌اید.');
         return;
       }
-      
+
       const today = this.formatPersianDate('today');
       let message = `📊 *گزارش کامل قطعی برق امروز ${today}*\n\n`;
-      
+
       for (const entry of entries) {
         try {
           const outages = await this.fetchOutageData(entry.billId, today);
           if (outages.length > 0) {
             message += `🏠 *${entry.alias} (${entry.billId}):*\n`;
-            outages.forEach(time => {
+            outages.forEach((time) => {
               message += `  🔴 ${time}\n`;
             });
             message += '\n';
@@ -522,7 +546,7 @@ export class TelegramService implements OnModuleInit {
           message += `🏠 *${entry.alias} (${entry.billId}):* ❌ خطا\n\n`;
         }
       }
-      
+
       await this.updateMainMenu(ctx, userId, message);
     });
 
@@ -533,7 +557,7 @@ export class TelegramService implements OnModuleInit {
       const index = parseInt(ctx.match[1]);
 
       const success = await this.storageService.deleteEntry(userId, index);
-      
+
       if (success) {
         this.replyTemp(ctx, '✅ قبض با موفقیت حذف شد.');
       } else {
@@ -624,54 +648,57 @@ export class TelegramService implements OnModuleInit {
     this.bot.action(/area_(\d+)/, async (ctx) => {
       ctx.answerCbQuery().catch(() => {});
       const areaId = parseInt(ctx.match[1]);
-      const area = this.outageAreas.find(a => a.id === areaId);
-      
+      const area = this.outageAreas.find((a) => a.id === areaId);
+
       if (!area) {
         this.replyTemp(ctx, '❌ منطقه مورد نظر یافت نشد.');
         return;
       }
-      
+
       const userId = ctx.from.id;
       const userState = this.getUserState(userId);
-      
+
       // Add to selected areas if not already selected
       if (!userState.selectedAreas.includes(area.name)) {
         userState.selectedAreas.push(area.name);
       }
-      
+
       // Format area information
       let message = `🔌 *برنامه قطعی برق*\n\n`;
       message += `📌 *منطقه:* ${area.name}\n\n`;
-      
+
       if (area.times && area.times.length > 0) {
         message += `⏰ *ساعات قطعی:*\n`;
-        area.times.forEach(time => {
+        area.times.forEach((time) => {
           message += `🔴 ${time}\n`;
         });
       } else {
         message += `✅ در این منطقه قطعی برنامه‌ریزی شده‌ای وجود ندارد.\n`;
       }
-      
+
       if (area.subAreas && area.subAreas.length > 0) {
         message += `\n🏘 *زیرمنطقه‌ها:*\n`;
-        area.subAreas.forEach(subArea => {
+        area.subAreas.forEach((subArea) => {
           message += `• ${subArea}\n`;
         });
       }
-      
+
       message += `\n⚠️ *توجه:* این اطلاعات ممکن است دقیق نباشند و قطعی‌های خارج از برنامه احتمالی هستند.`;
-      
+
       const keyboard = [
         [
-          { text: '➕ افزودن به گزارش', callback_data: `add_to_report_${areaId}` },
-          { text: '📄 مشاهده مناطق دیگر', callback_data: 'view_pdf_schedule' }
+          {
+            text: '➕ افزودن به گزارش',
+            callback_data: `add_to_report_${areaId}`,
+          },
+          { text: '📄 مشاهده مناطق دیگر', callback_data: 'view_pdf_schedule' },
         ],
         [
           { text: '📋 مشاهده گزارش من', callback_data: 'view_my_report' },
-          { text: '🏠 منوی اصلی', callback_data: 'back_to_main' }
-        ]
+          { text: '🏠 منوی اصلی', callback_data: 'back_to_main' },
+        ],
       ];
-      
+
       await this.updateMainMenu(ctx, userId, message, keyboard);
     });
 
@@ -679,16 +706,16 @@ export class TelegramService implements OnModuleInit {
     this.bot.action(/add_to_report_(\d+)/, async (ctx) => {
       ctx.answerCbQuery('✅ به گزارش شما اضافه شد').catch(() => {});
       const areaId = parseInt(ctx.match[1]);
-      const area = this.outageAreas.find(a => a.id === areaId);
-      
+      const area = this.outageAreas.find((a) => a.id === areaId);
+
       if (area) {
         const userId = ctx.from.id;
         const userState = this.getUserState(userId);
-        
+
         if (!userState.selectedAreas.includes(area.name)) {
           userState.selectedAreas.push(area.name);
         }
-        
+
         this.replyTemp(ctx, `✅ منطقه "${area.name}" به گزارش شما اضافه شد.`);
       }
     });
@@ -698,34 +725,35 @@ export class TelegramService implements OnModuleInit {
       ctx.answerCbQuery().catch(() => {});
       const userId = ctx.from.id;
       const userState = this.getUserState(userId);
-      
+
       if (!userState.selectedAreas || userState.selectedAreas.length === 0) {
-        this.replyTemp(ctx, '📋 شما هنوز منطقه‌ای به گزارش خود اضافه نکرده‌اید.');
+        this.replyTemp(
+          ctx,
+          '📋 شما هنوز منطقه‌ای به گزارش خود اضافه نکرده‌اید.',
+        );
         return;
       }
-      
+
       let message = '📋 *گزارش مناطق انتخاب شده شما*\n\n';
       userState.selectedAreas.forEach((areaName, index) => {
-        const area = this.outageAreas.find(a => a.name === areaName);
+        const area = this.outageAreas.find((a) => a.name === areaName);
         message += `${index + 1}. *${areaName}*`;
-        
+
         if (area && area.times && area.times.length > 0) {
           message += ` - ⏰ ${area.times.join('، ')}`;
         }
-        
+
         message += '\n';
       });
-      
+
       const keyboard = [
         [
           { text: '📄 افزودن منطقه دیگر', callback_data: 'view_pdf_schedule' },
-          { text: '🗑 پاک کردن گزارش', callback_data: 'clear_report' }
+          { text: '🗑 پاک کردن گزارش', callback_data: 'clear_report' },
         ],
-        [
-          { text: '🏠 منوی اصلی', callback_data: 'back_to_main' }
-        ]
+        [{ text: '🏠 منوی اصلی', callback_data: 'back_to_main' }],
       ];
-      
+
       await this.updateMainMenu(ctx, userId, message, keyboard);
     });
 
@@ -735,7 +763,7 @@ export class TelegramService implements OnModuleInit {
       const userId = ctx.from.id;
       const userState = this.getUserState(userId);
       userState.selectedAreas = [];
-      
+
       this.replyTemp(ctx, '✅ گزارش شما پاک شد.');
       await this.showPdfScheduleMenu(ctx);
     });
@@ -745,16 +773,20 @@ export class TelegramService implements OnModuleInit {
       ctx.answerCbQuery().catch(() => {});
       const page = parseInt(ctx.match[1]);
       const searchQuery = ctx.match[2] || '';
-      
+
       const filteredAreas = this.searchAreas(searchQuery);
-      const keyboard = this.createAreaSelectionKeyboard(filteredAreas, page, searchQuery);
-      
+      const keyboard = this.createAreaSelectionKeyboard(
+        filteredAreas,
+        page,
+        searchQuery,
+      );
+
       const userId = ctx.from.id;
       await this.updateMainMenu(
         ctx,
         userId,
         `📄 *برنامه قطعی برق از طریق PDF*\n\nلطفاً یک منطقه را انتخاب کنید:`,
-        keyboard
+        keyboard,
       );
     });
 
@@ -762,14 +794,14 @@ export class TelegramService implements OnModuleInit {
     this.bot.action('area_search', async (ctx) => {
       ctx.answerCbQuery().catch(() => {});
       const userId = ctx.from.id;
-      
+
       await this.updateMainMenu(
         ctx,
         userId,
         '🔍 *جستجوی منطقه*\n\nلطفاً نام منطقه مورد نظر خود را وارد کنید:',
-        [[{ text: '🔙 بازگشت', callback_data: 'view_pdf_schedule' }]]
+        [[{ text: '🔙 بازگشت', callback_data: 'view_pdf_schedule' }]],
       );
-      
+
       // Set state to expect search query
       this.getUserState(userId).pdfData = [{ expectingSearch: true }];
     });
@@ -780,60 +812,79 @@ export class TelegramService implements OnModuleInit {
     this.bot.on('text', async (ctx) => {
       const userId = ctx.from.id;
       const userState = this.getUserState(userId);
-      
+
       // Check if we're expecting a bill ID
-      if (userState.pdfData && userState.pdfData[0] && userState.pdfData[0].expectingBillId) {
+      if (
+        userState.pdfData &&
+        userState.pdfData[0] &&
+        userState.pdfData[0].expectingBillId
+      ) {
         this.deleteUserMessage(ctx);
         const billId = ctx.message.text.trim();
         userState.pdfData = []; // Reset state
-        
+
         // Ask for alias
         userState.pdfData = [{ expectingAlias: true, newBillId: billId }];
-        
+
         await this.updateMainMenu(
           ctx,
           userId,
           `✅ شناسه قبض: ${billId}\n\nلطفاً یک نام اختصاری برای این قبض وارد کنید:\n(مثال: خانه، محل کار)`,
-          [[{ text: '🔙 بازگشت', callback_data: 'back_to_main' }]]
+          [[{ text: '🔙 بازگشت', callback_data: 'back_to_main' }]],
         );
         return;
       }
-      
+
       // Check if we're expecting an alias
-      if (userState.pdfData && userState.pdfData[0] && userState.pdfData[0].expectingAlias) {
+      if (
+        userState.pdfData &&
+        userState.pdfData[0] &&
+        userState.pdfData[0].expectingAlias
+      ) {
         this.deleteUserMessage(ctx);
         const alias = ctx.message.text.trim();
         const billId = userState.pdfData[0].newBillId;
         userState.pdfData = []; // Reset state
-        
+
         await this.storageService.saveEntry(userId, { alias, billId });
-        
-        this.replyTemp(ctx, `✅ قبض "${alias}" با شناسه ${billId} با موفقیت ذخیره شد.`);
+
+        this.replyTemp(
+          ctx,
+          `✅ قبض "${alias}" با شناسه ${billId} با موفقیت ذخیره شد.`,
+        );
         await this.returnToMainMenu(ctx);
         return;
       }
-      
+
       // Check if we're expecting a search query
-      if (userState.pdfData && userState.pdfData[0] && userState.pdfData[0].expectingSearch) {
+      if (
+        userState.pdfData &&
+        userState.pdfData[0] &&
+        userState.pdfData[0].expectingSearch
+      ) {
         this.deleteUserMessage(ctx);
         const searchQuery = ctx.message.text;
         userState.pdfData = []; // Reset state
-        
+
         const filteredAreas = this.searchAreas(searchQuery);
-        
+
         if (filteredAreas.length === 0) {
           this.replyTemp(ctx, '❌ منطقه‌ای با این نام یافت نشد.');
           await this.showPdfScheduleMenu(ctx);
           return;
         }
-        
-        const keyboard = this.createAreaSelectionKeyboard(filteredAreas, 0, searchQuery);
-        
+
+        const keyboard = this.createAreaSelectionKeyboard(
+          filteredAreas,
+          0,
+          searchQuery,
+        );
+
         await this.updateMainMenu(
           ctx,
           userId,
           `🔍 *نتایج جستجو برای "${searchQuery}"*\n\nلطفاً یک منطقه را انتخاب کنید:`,
-          keyboard
+          keyboard,
         );
       }
     });
@@ -879,4 +930,4 @@ export class TelegramService implements OnModuleInit {
     const { jy: year, jm: month, jd: day } = toJalaali(date);
     return `${year}/${String(month).padStart(2, '0')}/${String(day).padStart(2, '0')}`;
   }
-} 
+}
