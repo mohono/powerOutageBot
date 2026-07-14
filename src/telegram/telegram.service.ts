@@ -867,7 +867,7 @@ export class TelegramService implements OnModuleInit {
   }
 
   private async fetchOutageData(billId: string) {
-    const response = await axios.get('https://hosein-nouri.ir/relay.php', {
+    const response = await axios.get('http://185.226.118.253/home/popfeeder', {
       params: { id: billId },
       timeout: 15000,
     });
