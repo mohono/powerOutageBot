@@ -901,7 +901,8 @@ export class TelegramService implements OnModuleInit {
       params,
       timeout: 15000,
     });
-    const periods = response.data.data
+    const items = Array.isArray(response.data.data) ? response.data.data : [];
+    const periods = items
       .map((item: any) => item.period)
       .filter((p: string) => /\d{2}:\d{2}-\d{2}:\d{2}/.test(p));
     return [...new Set(periods)];
