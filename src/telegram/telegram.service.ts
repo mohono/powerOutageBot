@@ -871,7 +871,10 @@ export class TelegramService implements OnModuleInit {
       params: { id: billId },
       timeout: 15000,
     });
-    return [...new Set(response.data.data.map((item) => item.period))];
+    const periods = response.data.data
+      .map((item: any) => item.period)
+      .filter((p: string) => /\d{2}:\d{2}-\d{2}:\d{2}/.test(p));
+    return [...new Set(periods)];
   }
 
   private formatPersianDate(dateType: string): string {
