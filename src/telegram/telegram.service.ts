@@ -585,16 +585,44 @@ export class TelegramService implements OnModuleInit {
       }
 
       const today = this.formatPersianDate('today');
+      const tomorrow = this.formatPersianDate('tomorrow');
+      const dayAfter = this.formatPersianDate('dayafter');
 
       let message = `🏠 *${entry.alias}*\n`;
       message += `📌 شناسه قبض: ${entry.billId}\n\n`;
 
       try {
-        const outages = await this.fetchOutageData(entry.billId);
+        const todayOutages = await this.fetchOutageData(entry.billId, today);
+        const tomorrowOutages = await this.fetchOutageData(
+          entry.billId,
+          tomorrow,
+        );
+        const dayAfterOutages = await this.fetchOutageData(
+          entry.billId,
+          dayAfter,
+        );
 
-        message += `📅 *برنامه قطعی:*\n`;
-        if (outages.length > 0) {
-          outages.forEach((time) => {
+        message += `📅 *امروز (${today}):*\n`;
+        if (todayOutages.length > 0) {
+          todayOutages.forEach((time) => {
+            message += `  🔴 ${time}\n`;
+          });
+        } else {
+          message += '  ✅ بدون قطعی\n';
+        }
+
+        message += `\n📅 *فردا (${tomorrow}):*\n`;
+        if (tomorrowOutages.length > 0) {
+          tomorrowOutages.forEach((time) => {
+            message += `  🔴 ${time}\n`;
+          });
+        } else {
+          message += '  ✅ بدون قطعی\n';
+        }
+
+        message += `\n📅 *پس فردا (${dayAfter}):*\n`;
+        if (dayAfterOutages.length > 0) {
+          dayAfterOutages.forEach((time) => {
             message += `  🔴 ${time}\n`;
           });
         } else {
@@ -866,9 +894,11 @@ export class TelegramService implements OnModuleInit {
     });
   }
 
-  private async fetchOutageData(billId: string) {
+  private async fetchOutageData(billId: string, date?: string) {
+    const params: Record<string, string> = { id: billId };
+    if (date) params.date = date;
     const response = await axios.get('http://185.226.118.253/home/popfeeder', {
-      params: { id: billId },
+      params,
       timeout: 15000,
     });
     const periods = response.data.data
