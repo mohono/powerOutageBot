@@ -8,7 +8,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 /* eslint-disable @typescript-eslint/no-floating-promises */
 /* eslint-disable @typescript-eslint/restrict-template-expressions */
-/* eslint-disable @typescript-eslint/require-await */
+
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { Telegraf, Scenes, session, Markup } from 'telegraf';
 import axios from 'axios';
@@ -26,15 +26,7 @@ interface UserState {
   reportCount?: number;
   lastReportDate?: string;
   pdfData?: any[];
-  selectedAreas?: string[];
   sentMessageIds: number[];
-}
-
-interface OutageArea {
-  id: number;
-  name: string;
-  times: string[];
-  subAreas?: string[];
 }
 
 @Injectable()
@@ -42,7 +34,6 @@ export class TelegramService implements OnModuleInit {
   private bot: Telegraf<Scenes.WizardContext>;
   private userStates: Map<number, UserState> = new Map();
   private readonly DAILY_REPORT_LIMIT = 20;
-  private outageAreas: OutageArea[] = [];
 
   constructor(private readonly storageService: StorageService) {
     this.bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
@@ -50,7 +41,6 @@ export class TelegramService implements OnModuleInit {
     this.setupWizard();
     this.setupCommands();
     this.setupCallbacks();
-    this.parsePdfStructure();
   }
 
   async onModuleInit() {
@@ -70,7 +60,6 @@ export class TelegramService implements OnModuleInit {
       this.userStates.set(userId, {
         reportCount: 0,
         lastReportDate: this.getCurrentDate(),
-        selectedAreas: [],
         sentMessageIds: [],
       });
     }
@@ -141,13 +130,9 @@ export class TelegramService implements OnModuleInit {
 
     keyboard.push([
       { text: '📊 گزارش امروز همه', callback_data: 'full_report' },
-      { text: '📄 مشاهده برنامه PDF', callback_data: 'view_pdf_schedule' },
     ]);
 
-    keyboard.push([
-      { text: '❓ راهنما', callback_data: 'help' },
-      { text: '🧹 پاکسازی', callback_data: 'cleanup' },
-    ]);
+    keyboard.push([{ text: '❓ راهنما', callback_data: 'help' }]);
 
     return keyboard;
   }
@@ -236,111 +221,6 @@ export class TelegramService implements OnModuleInit {
     await this.updateMainMenu(ctx, userId);
   }
 
-  // Parse the PDF structure from the provided text
-  private parsePdfStructure() {
-    // This is a simplified parser for the specific PDF format
-    // In a real implementation, you would extract text from the actual PDF file
-    const pdfText = `...`; // Your PDF text content here
-
-    const lines = pdfText.split('\n');
-    let currentArea: Partial<OutageArea> = {};
-
-    for (const line of lines) {
-      // Check if line starts with a number (new area)
-      const areaMatch = line.match(/^(\d+)([^\d].*)$/);
-      if (areaMatch) {
-        // Save previous area if exists
-        if (currentArea.name) {
-          this.outageAreas.push(currentArea as OutageArea);
-        }
-
-        // Start new area
-        currentArea = {
-          id: parseInt(areaMatch[1]),
-          name: areaMatch[2].trim(),
-          times: [],
-          subAreas: [],
-        };
-      }
-      // Check for time patterns (HH:MM-HH:MM)
-      else if (line.match(/\d{2}:\d{2}-\d{2}:\d{2}/)) {
-        const times = line.match(/\d{2}:\d{2}-\d{2}:\d{2}/g);
-        if (times && currentArea.times) {
-          currentArea.times.push(...times);
-        }
-      }
-      // Check for sub-areas (lines that start with special characters)
-      else if (
-        line.match(/^[^a-zA-Z0-9\u0600-\u06FF]/) &&
-        currentArea.subAreas
-      ) {
-        currentArea.subAreas.push(line.trim());
-      }
-    }
-
-    // Add the last area
-    if (currentArea.name) {
-      this.outageAreas.push(currentArea as OutageArea);
-    }
-  }
-
-  // Search areas by name
-  private searchAreas(query: string): OutageArea[] {
-    if (!query) return this.outageAreas;
-
-    return this.outageAreas.filter(
-      (area) =>
-        area.name.includes(query) ||
-        (area.subAreas && area.subAreas.some((sub) => sub.includes(query))),
-    );
-  }
-
-  // Generate area selection keyboard
-  private createAreaSelectionKeyboard(
-    areas: OutageArea[],
-    page: number = 0,
-    searchQuery: string = '',
-  ): any[] {
-    const itemsPerPage = 5;
-    const startIdx = page * itemsPerPage;
-    const paginatedAreas = areas.slice(startIdx, startIdx + itemsPerPage);
-
-    const keyboard = paginatedAreas.map((area) => [
-      {
-        text: `${area.id}. ${area.name}`,
-        callback_data: `area_${area.id}`,
-      },
-    ]);
-
-    // Add pagination controls if needed
-    const pagination = [];
-    if (page > 0) {
-      pagination.push({
-        text: '⬅️ قبلی',
-        callback_data: `area_page_${page - 1}_${searchQuery}`,
-      });
-    }
-
-    if (startIdx + itemsPerPage < areas.length) {
-      pagination.push({
-        text: '➡️ بعدی',
-        callback_data: `area_page_${page + 1}_${searchQuery}`,
-      });
-    }
-
-    if (pagination.length > 0) {
-      keyboard.push(pagination);
-    }
-
-    // Add search button
-    keyboard.push([{ text: '🔍 جستجوی مجدد', callback_data: 'area_search' }]);
-
-    // Add back to main menu
-    keyboard.push([{ text: '🏠 منوی اصلی', callback_data: 'back_to_main' }]);
-
-    return keyboard;
-  }
-
   private setupCommands() {
     this.bot.command('start', async (ctx) => {
       const userId = ctx.from.id;
@@ -363,24 +243,6 @@ export class TelegramService implements OnModuleInit {
     this.bot.command('menu', async (ctx) => {
       await this.returnToMainMenu(ctx);
     });
-
-    // Add command to view PDF schedule
-    this.bot.command('pdf', async (ctx) => {
-      await this.showPdfScheduleMenu(ctx);
-    });
-  }
-
-  // Show PDF schedule menu
-  private async showPdfScheduleMenu(ctx: any) {
-    const userId = ctx.from.id;
-    const userState = this.getUserState(userId);
-
-    await this.updateMainMenu(
-      ctx,
-      userId,
-      '📄 *برنامه قطعی برق از طریق PDF*\n\nلطفاً یک منطقه را انتخاب کنید:',
-      this.createAreaSelectionKeyboard(this.outageAreas),
-    );
   }
 
   private setupCallbacks() {
@@ -388,31 +250,6 @@ export class TelegramService implements OnModuleInit {
     this.bot.action('back_to_main', async (ctx) => {
       ctx.answerCbQuery().catch(() => {});
       await this.returnToMainMenu(ctx);
-    });
-
-    // Cleanup - delete all messages and show fresh menu
-    this.bot.action('cleanup', async (ctx) => {
-      ctx.answerCbQuery().catch(() => {});
-      const userId = ctx.from.id;
-      const userState = this.getUserState(userId);
-
-      // Delete the current menu message
-      if (userState.mainMessageId) {
-        ctx.telegram
-          .deleteMessage(ctx.chat.id, userState.mainMessageId)
-          .catch(() => {});
-      }
-      // Delete all other tracked messages
-      for (const msgId of userState.sentMessageIds) {
-        ctx.telegram.deleteMessage(ctx.chat.id, msgId).catch(() => {});
-      }
-
-      // Reset state
-      userState.mainMessageId = undefined;
-      userState.sentMessageIds = [];
-
-      // Send fresh main menu
-      await this.updateMainMenu(ctx, userId);
     });
 
     // Help callback
@@ -426,7 +263,6 @@ export class TelegramService implements OnModuleInit {
 ➕ *افزودن قبض:* شناسه قبض جدیدی اضافه کنید
 🗑 *حذف قبض:* قبض ذخیره شده را حذف کنید
 📊 *گزارش امروز همه:* گزارش کامل قطعی امروز تمام قبوض
-📄 *مشاهده برنامه PDF:* برنامه قطعی برق مناطق را ببینید
 
 📌 *نکته:* شناسه قبض را از قبض برق خود پیدا کنید.`;
 
@@ -642,176 +478,6 @@ export class TelegramService implements OnModuleInit {
       await this.updateMainMenu(ctx, userId, message, keyboard);
     });
 
-    // PDF schedule callback
-    this.bot.action('view_pdf_schedule', async (ctx) => {
-      ctx.answerCbQuery().catch(() => {});
-      await this.showPdfScheduleMenu(ctx);
-    });
-
-    // Area selection callback
-    this.bot.action(/area_(\d+)/, async (ctx) => {
-      ctx.answerCbQuery().catch(() => {});
-      const areaId = parseInt(ctx.match[1]);
-      const area = this.outageAreas.find((a) => a.id === areaId);
-
-      if (!area) {
-        this.replyTemp(ctx, '❌ منطقه مورد نظر یافت نشد.');
-        return;
-      }
-
-      const userId = ctx.from.id;
-      const userState = this.getUserState(userId);
-
-      // Add to selected areas if not already selected
-      if (!userState.selectedAreas.includes(area.name)) {
-        userState.selectedAreas.push(area.name);
-      }
-
-      // Format area information
-      let message = `🔌 *برنامه قطعی برق*\n\n`;
-      message += `📌 *منطقه:* ${area.name}\n\n`;
-
-      if (area.times && area.times.length > 0) {
-        message += `⏰ *ساعات قطعی:*\n`;
-        area.times.forEach((time) => {
-          message += `🔴 ${time}\n`;
-        });
-      } else {
-        message += `✅ در این منطقه قطعی برنامه‌ریزی شده‌ای وجود ندارد.\n`;
-      }
-
-      if (area.subAreas && area.subAreas.length > 0) {
-        message += `\n🏘 *زیرمنطقه‌ها:*\n`;
-        area.subAreas.forEach((subArea) => {
-          message += `• ${subArea}\n`;
-        });
-      }
-
-      message += `\n⚠️ *توجه:* این اطلاعات ممکن است دقیق نباشند و قطعی‌های خارج از برنامه احتمالی هستند.`;
-
-      const keyboard = [
-        [
-          {
-            text: '➕ افزودن به گزارش',
-            callback_data: `add_to_report_${areaId}`,
-          },
-          { text: '📄 مشاهده مناطق دیگر', callback_data: 'view_pdf_schedule' },
-        ],
-        [
-          { text: '📋 مشاهده گزارش من', callback_data: 'view_my_report' },
-          { text: '🏠 منوی اصلی', callback_data: 'back_to_main' },
-        ],
-      ];
-
-      await this.updateMainMenu(ctx, userId, message, keyboard);
-    });
-
-    // Add to report callback
-    this.bot.action(/add_to_report_(\d+)/, async (ctx) => {
-      ctx.answerCbQuery('✅ به گزارش شما اضافه شد').catch(() => {});
-      const areaId = parseInt(ctx.match[1]);
-      const area = this.outageAreas.find((a) => a.id === areaId);
-
-      if (area) {
-        const userId = ctx.from.id;
-        const userState = this.getUserState(userId);
-
-        if (!userState.selectedAreas.includes(area.name)) {
-          userState.selectedAreas.push(area.name);
-        }
-
-        this.replyTemp(ctx, `✅ منطقه "${area.name}" به گزارش شما اضافه شد.`);
-      }
-    });
-
-    // View my report callback
-    this.bot.action('view_my_report', async (ctx) => {
-      ctx.answerCbQuery().catch(() => {});
-      const userId = ctx.from.id;
-      const userState = this.getUserState(userId);
-
-      if (!userState.selectedAreas || userState.selectedAreas.length === 0) {
-        this.replyTemp(
-          ctx,
-          '📋 شما هنوز منطقه‌ای به گزارش خود اضافه نکرده‌اید.',
-        );
-        return;
-      }
-
-      let message = '📋 *گزارش مناطق انتخاب شده شما*\n\n';
-      userState.selectedAreas.forEach((areaName, index) => {
-        const area = this.outageAreas.find((a) => a.name === areaName);
-        message += `${index + 1}. *${areaName}*`;
-
-        if (area && area.times && area.times.length > 0) {
-          message += ` - ⏰ ${area.times.join('، ')}`;
-        }
-
-        message += '\n';
-      });
-
-      const keyboard = [
-        [
-          { text: '📄 افزودن منطقه دیگر', callback_data: 'view_pdf_schedule' },
-          { text: '🗑 پاک کردن گزارش', callback_data: 'clear_report' },
-        ],
-        [{ text: '🏠 منوی اصلی', callback_data: 'back_to_main' }],
-      ];
-
-      await this.updateMainMenu(ctx, userId, message, keyboard);
-    });
-
-    // Clear report callback
-    this.bot.action('clear_report', async (ctx) => {
-      ctx.answerCbQuery().catch(() => {});
-      const userId = ctx.from.id;
-      const userState = this.getUserState(userId);
-      userState.selectedAreas = [];
-
-      this.replyTemp(ctx, '✅ گزارش شما پاک شد.');
-      await this.showPdfScheduleMenu(ctx);
-    });
-
-    // Area pagination callback
-    this.bot.action(/area_page_(\d+)_?(.*)?/, async (ctx) => {
-      ctx.answerCbQuery().catch(() => {});
-      const page = parseInt(ctx.match[1]);
-      const searchQuery = ctx.match[2] || '';
-
-      const filteredAreas = this.searchAreas(searchQuery);
-      const keyboard = this.createAreaSelectionKeyboard(
-        filteredAreas,
-        page,
-        searchQuery,
-      );
-
-      const userId = ctx.from.id;
-      await this.updateMainMenu(
-        ctx,
-        userId,
-        `📄 *برنامه قطعی برق از طریق PDF*\n\nلطفاً یک منطقه را انتخاب کنید:`,
-        keyboard,
-      );
-    });
-
-    // Area search callback
-    this.bot.action('area_search', async (ctx) => {
-      ctx.answerCbQuery().catch(() => {});
-      const userId = ctx.from.id;
-
-      await this.updateMainMenu(
-        ctx,
-        userId,
-        '🔍 *جستجوی منطقه*\n\nلطفاً نام منطقه مورد نظر خود را وارد کنید:',
-        [[{ text: '🔙 بازگشت', callback_data: 'view_pdf_schedule' }]],
-      );
-
-      // Set state to expect search query
-      this.getUserState(userId).pdfData = [{ expectingSearch: true }];
-    });
-
-    // ... existing callbacks ...
-
     // Handle text messages
     this.bot.on('text', async (ctx) => {
       const userId = ctx.from.id;
@@ -858,38 +524,6 @@ export class TelegramService implements OnModuleInit {
         );
         await this.returnToMainMenu(ctx);
         return;
-      }
-
-      // Check if we're expecting a search query
-      if (
-        userState.pdfData &&
-        userState.pdfData[0] &&
-        userState.pdfData[0].expectingSearch
-      ) {
-        this.deleteUserMessage(ctx);
-        const searchQuery = ctx.message.text;
-        userState.pdfData = []; // Reset state
-
-        const filteredAreas = this.searchAreas(searchQuery);
-
-        if (filteredAreas.length === 0) {
-          this.replyTemp(ctx, '❌ منطقه‌ای با این نام یافت نشد.');
-          await this.showPdfScheduleMenu(ctx);
-          return;
-        }
-
-        const keyboard = this.createAreaSelectionKeyboard(
-          filteredAreas,
-          0,
-          searchQuery,
-        );
-
-        await this.updateMainMenu(
-          ctx,
-          userId,
-          `🔍 *نتایج جستجو برای "${searchQuery}"*\n\nلطفاً یک منطقه را انتخاب کنید:`,
-          keyboard,
-        );
       }
     });
   }
