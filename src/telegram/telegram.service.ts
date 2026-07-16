@@ -67,9 +67,9 @@ export class TelegramService implements OnModuleInit {
       console.error('Bot global error:', err);
     });
 
-    this.bot.on('message', async (ctx) => {
+    this.bot.on('message', async (ctx, next) => {
       try {
-        if (!ctx.message || 'text' in ctx.message) return;
+        if (!ctx.message || 'text' in ctx.message) return next();
 
         const userId = ctx.from.id;
         const userState = this.getUserState(userId);
@@ -82,9 +82,13 @@ export class TelegramService implements OnModuleInit {
         if (expectingInput) {
           this.deleteUserMessage(ctx);
           await this.flashMessage(ctx, '❌ لطفاً فقط متن ارسال کنید.');
+          return;
         }
+
+        return next();
       } catch (err) {
         console.error('non-text message error:', err);
+        return next();
       }
     });
   }
