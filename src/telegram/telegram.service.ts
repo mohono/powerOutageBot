@@ -443,8 +443,8 @@ export class TelegramService implements OnModuleInit {
               message += '✅ بدون قطعی\n';
             }
             message += '\n';
-          } catch {
-            message += `*${entry.alias}*\n📌 شناسه قبض: ${entry.billId}\n❌ خطا\n\n`;
+          } catch (err: any) {
+            message += `*${entry.alias}*\n📌 شناسه قبض: ${entry.billId}\n${err.message || '❌ خطا'}\n\n`;
           }
         }
 
@@ -537,8 +537,8 @@ export class TelegramService implements OnModuleInit {
           } else {
             message += '  ✅ بدون قطعی\n';
           }
-        } catch {
-          message += '❌ خطا در دریافت اطلاعات قطعی برق.';
+        } catch (err: any) {
+          message += err.message || '❌ خطا در دریافت اطلاعات قطعی برق.';
         }
 
         const keyboard = [
@@ -646,15 +646,32 @@ ${ctx.message.text}`;
   private async fetchOutageData(billId: string, date?: string) {
     const params: Record<string, string> = { id: billId };
     if (date) params.date = date;
-    const response = await axios.get('http://185.226.118.253/home/popfeeder', {
-      params,
-      timeout: 15000,
-    });
-    const items = Array.isArray(response.data.data) ? response.data.data : [];
-    const periods = items
-      .map((item: any) => item.period)
-      .filter((p: string) => /\d{2}:\d{2}-\d{2}:\d{2}/.test(p));
-    return [...new Set(periods)];
+    try {
+      const response = await axios.get(
+        'http://185.226.118.253/home/popfeeder',
+        { params, timeout: 15000 },
+      );
+      const items = Array.isArray(response.data.data) ? response.data.data : [];
+      const periods = items
+        .map((item: any) => item.period)
+        .filter((p: string) => /\d{2}:\d{2}-\d{2}:\d{2}/.test(p));
+      return [...new Set(periods)];
+    } catch (err: any) {
+      if (
+        err.code === 'ECONNREFUSED' ||
+        err.code === 'ENOTFOUND' ||
+        err.code === 'EAI_AGAIN'
+      ) {
+        throw new Error('❌ خطا در اتصال به سرور قطعی برق', { cause: err });
+      }
+      if (err.code === 'ECONNABORTED' || err.message?.includes('timeout')) {
+        throw new Error('❌ سرور قطعی برق پاسخگو نیست', { cause: err });
+      }
+      if (err.response?.status === 404) {
+        throw new Error('❌ شناسه قبض نامعتبر است', { cause: err });
+      }
+      throw new Error('❌ خطا در دریافت اطلاعات', { cause: err });
+    }
   }
 
   private getDateForType(type: string): string {
