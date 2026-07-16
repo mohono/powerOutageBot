@@ -106,10 +106,6 @@ export class TelegramService implements OnModuleInit {
 
       // Quick access buttons for saved bills
       if (entries.length > 0) {
-        keyboard.push([
-          { text: '⚡ بررسی سریع قطعی', callback_data: 'quick_check' },
-        ]);
-
         // Add bill buttons (max 2 per row)
         const billButtons = [];
         for (let i = 0; i < entries.length; i++) {
@@ -127,8 +123,8 @@ export class TelegramService implements OnModuleInit {
 
       // Action buttons
       keyboard.push([
-        { text: '➕ افزودن قبض', callback_data: 'add_bill' },
-        { text: '🗑 حذف قبض', callback_data: 'manage_bills' },
+        { text: '🆕 افزودن قبض', callback_data: 'add_bill' },
+        { text: '🗑️ حذف قبض', callback_data: 'manage_bills' },
       ]);
 
       keyboard.push([
@@ -136,6 +132,8 @@ export class TelegramService implements OnModuleInit {
       ]);
 
       keyboard.push([{ text: '❓ راهنما', callback_data: 'help' }]);
+
+      keyboard.push([{ text: '🏠 منوی اصلی', callback_data: 'back_to_main' }]);
 
       return keyboard;
     } catch (err) {
@@ -303,54 +301,6 @@ export class TelegramService implements OnModuleInit {
       }
     });
 
-    // Quick check all bills
-    this.bot.action('quick_check', async (ctx) => {
-      try {
-        ctx.answerCbQuery().catch(() => {});
-        const userId = ctx.from.id;
-        const { allowed, message: limitMsg } =
-          this.canUserRequestReport(userId);
-
-        if (!allowed) {
-          await this.flashMessage(ctx, limitMsg);
-          return;
-        }
-
-        const entries = await this.storageService.getEntries(userId);
-
-        if (entries.length === 0) {
-          await this.flashMessage(
-            ctx,
-            '❌ شما هنوز قبضی ذخیره نکرده‌اید. ابتدا یک قبض اضافه کنید.',
-          );
-          return;
-        }
-
-        const today = this.getDateForType('today');
-        let message = `⚡ *بررسی سریع قطعی برق - ${today}*\n\n`;
-
-        for (const entry of entries) {
-          try {
-            const outages = await this.fetchOutageData(entry.billId);
-            if (outages.length > 0) {
-              message += `*${entry.alias}:*\n`;
-              outages.forEach((time) => {
-                message += `  🔴 ${time}\n`;
-              });
-            } else {
-              message += `*${entry.alias}:* ✅ بدون قطعی\n`;
-            }
-          } catch {
-            message += `*${entry.alias}:* ❌ خطا در دریافت اطلاعات\n`;
-          }
-        }
-
-        await this.updateMainMenu(ctx, userId, message);
-      } catch (err) {
-        console.error('quick_check error:', err);
-      }
-    });
-
     // Add bill callback
     this.bot.action('add_bill', async (ctx) => {
       try {
@@ -389,7 +339,7 @@ export class TelegramService implements OnModuleInit {
           message += `${index + 1}. ${entry.alias} (${entry.billId})\n`;
           keyboard.push([
             {
-              text: `🗑 حذف ${entry.alias}`,
+              text: `🗑️ حذف ${entry.alias}`,
               callback_data: `delete_bill_${index}`,
             },
           ]);
@@ -429,17 +379,17 @@ export class TelegramService implements OnModuleInit {
         for (const entry of entries) {
           try {
             const outages = await this.fetchOutageData(entry.billId);
+            message += `*${entry.alias}*\n📌 شناسه قبض: ${entry.billId}\n`;
             if (outages.length > 0) {
-              message += `*${entry.alias} (${entry.billId}):*\n`;
               outages.forEach((time) => {
                 message += `  🔴 ${time}\n`;
               });
-              message += '\n';
             } else {
-              message += `*${entry.alias} (${entry.billId}):* ✅ بدون قطعی\n\n`;
+              message += '✅ بدون قطعی\n';
             }
+            message += '\n';
           } catch {
-            message += `*${entry.alias} (${entry.billId}):* ❌ خطا\n\n`;
+            message += `*${entry.alias}*\n📌 شناسه قبض: ${entry.billId}\n❌ خطا\n\n`;
           }
         }
 
