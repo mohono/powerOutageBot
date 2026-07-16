@@ -134,22 +134,23 @@ export class TelegramService implements OnModuleInit {
 
       // Action buttons
       keyboard.push([
+        { text: '📊 گزارش امروز همه', callback_data: 'full_report' },
+        { text: '🏠 منوی اصلی', callback_data: 'back_to_main' },
+      ]);
+
+      keyboard.push([
         { text: '🆕 افزودن قبض', callback_data: 'add_bill' },
         { text: '🗑️ حذف قبض', callback_data: 'manage_bills' },
       ]);
 
-      keyboard.push([
-        { text: '📊 گزارش امروز همه قبوض', callback_data: 'full_report' },
-      ]);
-
       if (process.env.BOT_OWNER_ID) {
-        keyboard.push([{ text: '✉️ ارسال نظر', callback_data: 'feedback' }]);
+        keyboard.push([
+          { text: '✉️ ارسال نظر', callback_data: 'feedback' },
+          { text: '❓ راهنما', callback_data: 'help' },
+        ]);
+      } else {
+        keyboard.push([{ text: '❓ راهنما', callback_data: 'help' }]);
       }
-
-      keyboard.push([
-        { text: '❓ راهنما', callback_data: 'help' },
-        { text: '🏠 منوی اصلی', callback_data: 'back_to_main' },
-      ]);
 
       return keyboard;
     } catch (err) {
