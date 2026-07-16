@@ -66,6 +66,27 @@ export class TelegramService implements OnModuleInit {
     this.bot.catch((err) => {
       console.error('Bot global error:', err);
     });
+
+    this.bot.on('message', async (ctx) => {
+      try {
+        if (!ctx.message || 'text' in ctx.message) return;
+
+        const userId = ctx.from.id;
+        const userState = this.getUserState(userId);
+
+        const expectingInput =
+          userState.expectingFeedback ||
+          userState.pdfData?.[0]?.expectingBillId ||
+          userState.pdfData?.[0]?.expectingAlias;
+
+        if (expectingInput) {
+          this.deleteUserMessage(ctx);
+          await this.flashMessage(ctx, '❌ لطفاً فقط متن ارسال کنید.');
+        }
+      } catch (err) {
+        console.error('non-text message error:', err);
+      }
+    });
   }
 
   private getUserState(userId: number): UserState {
@@ -401,6 +422,8 @@ export class TelegramService implements OnModuleInit {
           return;
         }
 
+        await this.updateMainMenu(ctx, userId, '⏳ در حال دریافت اطلاعات...');
+
         const today = this.getDateForType('today');
         let message = `📊 *گزارش کامل قطعی برق امروز ${today}*\n\n`;
 
@@ -459,6 +482,12 @@ export class TelegramService implements OnModuleInit {
           await this.flashMessage(ctx, '❌ قبض یافت نشد.');
           return;
         }
+
+        await this.updateMainMenu(
+          ctx,
+          userId,
+          `⏳ در حال دریافت اطلاعات برای ${entry.alias}...`,
+        );
 
         const today = this.getDateForType('today');
         const tomorrow = this.getDateForType('tomorrow');
@@ -560,6 +589,17 @@ ${ctx.message.text}`;
         ) {
           this.deleteUserMessage(ctx);
           const billId = ctx.message.text.trim();
+
+          if (!/^\d{13}$/.test(billId)) {
+            await this.updateMainMenu(
+              ctx,
+              userId,
+              '❌ شناسه قبض باید یک عدد ۱۳ رقمی باشد.\n\n➕ *افزودن قبض جدید*\n\nلطفاً شناسه قبض خود را وارد کنید:\n(شناسه قبض را از روی قبض برق پیدا کنید)',
+              [[{ text: '🔙 بازگشت', callback_data: 'back_to_main' }]],
+            );
+            return;
+          }
+
           userState.pdfData = [];
 
           // Ask for alias
