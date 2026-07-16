@@ -24,7 +24,7 @@ interface UserState {
   mainMessageId?: number;
   reportCount?: number;
   lastReportDate?: string;
-  pdfData?: any[];
+  inputState?: any[];
   sentMessageIds: number[];
   expectingFeedback?: boolean;
 }
@@ -76,8 +76,8 @@ export class TelegramService implements OnModuleInit {
 
         const expectingInput =
           userState.expectingFeedback ||
-          userState.pdfData?.[0]?.expectingBillId ||
-          userState.pdfData?.[0]?.expectingAlias;
+          userState.inputState?.[0]?.expectingBillId ||
+          userState.inputState?.[0]?.expectingAlias;
 
         if (expectingInput) {
           this.deleteUserMessage(ctx);
@@ -107,6 +107,11 @@ export class TelegramService implements OnModuleInit {
     if (userState.lastReportDate !== this.getCurrentDate()) {
       userState.reportCount = 0;
       userState.lastReportDate = this.getCurrentDate();
+    }
+
+    // Prune sent message IDs to prevent unbounded growth
+    if (userState.sentMessageIds.length > 100) {
+      userState.sentMessageIds = userState.sentMessageIds.slice(-50);
     }
 
     return userState;
@@ -272,7 +277,7 @@ export class TelegramService implements OnModuleInit {
     const userId = ctx.from.id;
     const userState = this.getUserState(userId);
     userState.expectingFeedback = false;
-    userState.pdfData = [];
+    userState.inputState = [];
 
     // Leave any active scene
     if (ctx.scene) {
@@ -367,7 +372,7 @@ export class TelegramService implements OnModuleInit {
           [[{ text: '🔙 بازگشت', callback_data: 'back_to_main' }]],
         );
 
-        this.getUserState(userId).pdfData = [{ expectingBillId: true }];
+        this.getUserState(userId).inputState = [{ expectingBillId: true }];
       } catch (err) {
         console.error('add_bill error:', err);
       }
@@ -587,12 +592,12 @@ ${ctx.message.text}`;
 
         // Check if we're expecting a bill ID
         if (
-          userState.pdfData &&
-          userState.pdfData[0] &&
-          userState.pdfData[0].expectingBillId
+          userState.inputState &&
+          userState.inputState[0] &&
+          userState.inputState[0].expectingBillId
         ) {
           this.deleteUserMessage(ctx);
-          const billId = ctx.message.text.trim();
+          const billId = this.normalizeDigits(ctx.message.text.trim());
 
           if (!/^\d{13}$/.test(billId)) {
             await this.updateMainMenu(
@@ -604,10 +609,10 @@ ${ctx.message.text}`;
             return;
           }
 
-          userState.pdfData = [];
+          userState.inputState = [];
 
           // Ask for alias
-          userState.pdfData = [{ expectingAlias: true, newBillId: billId }];
+          userState.inputState = [{ expectingAlias: true, newBillId: billId }];
 
           await this.updateMainMenu(
             ctx,
@@ -620,14 +625,14 @@ ${ctx.message.text}`;
 
         // Check if we're expecting an alias
         if (
-          userState.pdfData &&
-          userState.pdfData[0] &&
-          userState.pdfData[0].expectingAlias
+          userState.inputState &&
+          userState.inputState[0] &&
+          userState.inputState[0].expectingAlias
         ) {
           this.deleteUserMessage(ctx);
           const alias = ctx.message.text.trim();
-          const billId = userState.pdfData[0].newBillId;
-          userState.pdfData = [];
+          const billId = userState.inputState[0].newBillId;
+          userState.inputState = [];
 
           await this.storageService.saveEntry(userId, { alias, billId });
 
@@ -646,11 +651,10 @@ ${ctx.message.text}`;
   private async fetchOutageData(billId: string, date?: string) {
     const params: Record<string, string> = { id: billId };
     if (date) params.date = date;
+    const apiUrl =
+      process.env.API_BASE_URL || 'http://185.226.118.253/home/popfeeder';
     try {
-      const response = await axios.get(
-        'http://185.226.118.253/home/popfeeder',
-        { params, timeout: 15000 },
-      );
+      const response = await axios.get(apiUrl, { params, timeout: 15000 });
       const items = Array.isArray(response.data.data) ? response.data.data : [];
       const periods = items
         .map((item: any) => item.period)
@@ -672,6 +676,32 @@ ${ctx.message.text}`;
       }
       throw new Error('❌ خطا در دریافت اطلاعات', { cause: err });
     }
+  }
+
+  private normalizeDigits(str: string): string {
+    const digitMap: Record<string, string> = {
+      '۰': '0',
+      '۱': '1',
+      '۲': '2',
+      '۳': '3',
+      '۴': '4',
+      '۵': '5',
+      '۶': '6',
+      '۷': '7',
+      '۸': '8',
+      '۹': '9',
+      '٠': '0',
+      '١': '1',
+      '٢': '2',
+      '٣': '3',
+      '٤': '4',
+      '٥': '5',
+      '٦': '6',
+      '٧': '7',
+      '٨': '8',
+      '٩': '9',
+    };
+    return str.replace(/[۰-۹٠-٩]/g, (ch) => digitMap[ch] || ch);
   }
 
   private getDateForType(type: string): string {
