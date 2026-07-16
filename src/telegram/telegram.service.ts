@@ -26,6 +26,7 @@ interface UserState {
   lastReportDate?: string;
   pdfData?: any[];
   sentMessageIds: number[];
+  expectingFeedback?: boolean;
 }
 
 @Injectable()
@@ -141,6 +142,10 @@ export class TelegramService implements OnModuleInit {
         { text: '📊 گزارش امروز همه قبوض', callback_data: 'full_report' },
       ]);
 
+      if (process.env.BOT_OWNER_ID) {
+        keyboard.push([{ text: '✉️ ارسال نظر', callback_data: 'feedback' }]);
+      }
+
       keyboard.push([
         { text: '❓ راهنما', callback_data: 'help' },
         { text: '🏠 منوی اصلی', callback_data: 'back_to_main' },
@@ -239,6 +244,9 @@ export class TelegramService implements OnModuleInit {
 
   private async returnToMainMenu(ctx: any) {
     const userId = ctx.from.id;
+    const userState = this.getUserState(userId);
+    userState.expectingFeedback = false;
+    userState.pdfData = [];
 
     // Leave any active scene
     if (ctx.scene) {
@@ -298,6 +306,25 @@ export class TelegramService implements OnModuleInit {
         await this.updateMainMenu(ctx, userId, helpText);
       } catch (err) {
         console.error('help error:', err);
+      }
+    });
+
+    // Feedback callback
+    this.bot.action('feedback', async (ctx) => {
+      try {
+        ctx.answerCbQuery().catch(() => {});
+        const userId = ctx.from.id;
+        const userState = this.getUserState(userId);
+        userState.expectingFeedback = true;
+
+        await this.updateMainMenu(
+          ctx,
+          userId,
+          '✉️ *ارسال نظر*\n\nلطفاً نظر، پیشنهاد یا انتقاد خود را بنویسید:',
+          [[{ text: '🔙 بازگشت', callback_data: 'back_to_main' }]],
+        );
+      } catch (err) {
+        console.error('feedback error:', err);
       }
     });
 
@@ -495,6 +522,36 @@ export class TelegramService implements OnModuleInit {
       try {
         const userId = ctx.from.id;
         const userState = this.getUserState(userId);
+
+        // Check if we're expecting feedback
+        if (userState.expectingFeedback) {
+          this.deleteUserMessage(ctx);
+          userState.expectingFeedback = false;
+          const ownerId = process.env.BOT_OWNER_ID;
+          const from = ctx.from;
+
+          const feedbackMsg = `📩 *نظر جدید*
+👤 ${from.first_name || ''} ${from.last_name || ''}${from.username ? ` (@${from.username})` : ''}
+🆔 ${from.id}
+
+${ctx.message.text}`;
+
+          try {
+            await ctx.telegram.sendMessage(ownerId, feedbackMsg, {
+              parse_mode: 'Markdown',
+            });
+            await this.flashMessage(
+              ctx,
+              '✅ نظر شما با موفقیت ارسال شد. تشکر از شما!',
+            );
+          } catch {
+            await this.flashMessage(
+              ctx,
+              '❌ خطا در ارسال نظر. لطفاً بعداً تلاش کنید.',
+            );
+          }
+          return;
+        }
 
         // Check if we're expecting a bill ID
         if (
