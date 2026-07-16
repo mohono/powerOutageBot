@@ -33,6 +33,14 @@ export class TelegramService implements OnModuleInit {
   private bot: Telegraf<Scenes.WizardContext>;
   private userStates: Map<number, UserState> = new Map();
   private readonly DAILY_REPORT_LIMIT = 20;
+  private readonly welcomeText = `🔌 *به ربات اعلام برنامه قطعی برق کرمانشاه خوش آمدید!*
+
+با این ربات می‌توانید:
+⚡ زمان قطعی برق را بر اساس شناسه قبض بررسی کنید
+🏠 چندین قبض را ذخیره و مدیریت کنید
+📊 گزارش کامل قطعی برق امروز را برای تمام قبوض خود دریافت کنید
+
+از دکمه‌های زیر استفاده کنید:`;
 
   constructor(private readonly storageService: StorageService) {
     this.bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
@@ -128,12 +136,13 @@ export class TelegramService implements OnModuleInit {
       ]);
 
       keyboard.push([
-        { text: '📊 گزارش امروز همه', callback_data: 'full_report' },
+        { text: '📊 گزارش امروز همه قبوض', callback_data: 'full_report' },
       ]);
 
-      keyboard.push([{ text: '❓ راهنما', callback_data: 'help' }]);
-
-      keyboard.push([{ text: '🏠 منوی اصلی', callback_data: 'back_to_main' }]);
+      keyboard.push([
+        { text: '❓ راهنما', callback_data: 'help' },
+        { text: '🏠 منوی اصلی', callback_data: 'back_to_main' },
+      ]);
 
       return keyboard;
     } catch (err) {
@@ -234,8 +243,7 @@ export class TelegramService implements OnModuleInit {
       await ctx.scene.leave();
     }
 
-    // Update to main menu
-    await this.updateMainMenu(ctx, userId);
+    await this.updateMainMenu(ctx, userId, this.welcomeText);
   }
 
   private setupCommands() {
@@ -243,18 +251,7 @@ export class TelegramService implements OnModuleInit {
       try {
         const userId = ctx.from.id;
 
-        await this.updateMainMenu(
-          ctx,
-          userId,
-          `🔌 *به ربات اطلاع رسانی برنامه قطعی برق کرمانشاه خوش آمدید!*
-
-با این ربات می‌تونید:
-⚡ زمان‌های قطعی برق رو بر اساس شناسه قبض بررسی کنید
-🏠 چندین قبض رو ذخیره و مدیریت کنید
-📊 گزارش‌ سریع از برنامه قطعی برق امروز روی تمام قبوض خود دریافت کنید
-
-برای ادامه از دکمه‌های زیر استفاده کنید:`,
-        );
+        await this.updateMainMenu(ctx, userId, this.welcomeText);
       } catch (err) {
         console.error('start command error:', err);
       }
@@ -287,13 +284,12 @@ export class TelegramService implements OnModuleInit {
         const userId = ctx.from.id;
         const helpText = `❓ *راهنمای ربات*
 
-⚡ *بررسی سریع قطعی:* زمان قطعی برق تمام قبوض ذخیره شده را بررسی کنید
-🏠 *انتخاب قبض:* یک قبض ذخیره شده را انتخاب کنید
-➕ *افزودن قبض:* شناسه قبض جدیدی اضافه کنید
-🗑 *حذف قبض:* قبض ذخیره شده را حذف کنید
-📊 *گزارش امروز همه:* گزارش کامل قطعی امروز تمام قبوض
+🏠 *انتخاب قبض:* روی نام قبض مورد نظر کلیک کنید
+🆕 *افزودن قبض:* شناسه قبض جدید اضافه کنید
+🗑️ *مدیریت قبوض:* قبوض ذخیره شده را مدیریت یا حذف کنید
+📊 *گزارش امروز:* وضعیت قطعی برق امروز تمام قبوض را نمایش می‌دهد
 
-📌 *نکته:* شناسه قبض را از قبض برق خود پیدا کنید.`;
+📌 *راهنما:* شناسه قبض را از روی قبض برق خود پیدا کنید.`;
 
         await this.updateMainMenu(ctx, userId, helpText);
       } catch (err) {
@@ -468,7 +464,7 @@ export class TelegramService implements OnModuleInit {
             message += '  ✅ بدون قطعی\n';
           }
 
-          message += `\n📅 *پس فردا (${dayAfter}):*\n`;
+          message += `\n📅 *پس‌فردا (${dayAfter}):*\n`;
           if (dayAfterOutages.length > 0) {
             dayAfterOutages.forEach((time) => {
               message += `  🔴 ${time}\n`;
@@ -481,10 +477,7 @@ export class TelegramService implements OnModuleInit {
         }
 
         const keyboard = [
-          [
-            { text: '🔄 بروزرسانی', callback_data: `bill_${index}` },
-            { text: '🏠 منوی اصلی', callback_data: 'back_to_main' },
-          ],
+          [{ text: '🏠 منوی اصلی', callback_data: 'back_to_main' }],
         ];
 
         await this.updateMainMenu(ctx, userId, message, keyboard);
