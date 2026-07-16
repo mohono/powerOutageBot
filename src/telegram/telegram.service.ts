@@ -531,16 +531,14 @@ export class TelegramService implements OnModuleInit {
           const ownerId = process.env.BOT_OWNER_ID;
           const from = ctx.from;
 
-          const feedbackMsg = `📩 *نظر جدید*
+          const feedbackMsg = `📩 نظر جدید
 👤 ${from.first_name || ''} ${from.last_name || ''}${from.username ? ` (@${from.username})` : ''}
 🆔 ${from.id}
 
 ${ctx.message.text}`;
 
           try {
-            await ctx.telegram.sendMessage(ownerId, feedbackMsg, {
-              parse_mode: 'Markdown',
-            });
+            await ctx.telegram.sendMessage(ownerId, feedbackMsg);
             await this.flashMessage(
               ctx,
               '✅ نظر شما با موفقیت ارسال شد. تشکر از شما!',
