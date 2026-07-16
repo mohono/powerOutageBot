@@ -2,7 +2,7 @@
 
 ## What this is
 
-NestJS TypeScript Telegram bot (Telegraf) for Iranian power outage notifications (Kermanshah region). Fetches outage schedules from an external API and from a local PDF parser stub.
+NestJS TypeScript Telegram bot (Telegraf) for Iranian power outage notifications (Kermanshah region). Fetches outage schedules from an external API proxy.
 
 ## Commands
 
@@ -16,8 +16,9 @@ NestJS TypeScript Telegram bot (Telegraf) for Iranian power outage notifications
 
 - **`.env` is required**: `TELEGRAM_BOT_TOKEN` must be set or the bot crashes on startup.
 - **`bills.json` is runtime data**: `StorageService` reads/writes it at `process.cwd()/bills.json`. Do not hardcode values or commit user data changes.
-- **`parsePdfStructure()` is a stub** (`src/telegram/telegram.service.ts`): the `pdfText` variable is an empty string, so `outageAreas` is always empty. The PDF schedule feature is non-functional.
-- **External API dependency**: outage data is fetched from `http://85.185.251.108:8007/home/popfeeder` — may be unreachable from your network.
+- **External API dependency**: outage data is fetched from `API_BASE_URL` (default `http://185.226.118.253/home/popfeeder`) — configurable via `.env`. The upstream API (`85.185.251.108:8007`) is inside Iran; `API_BASE_URL` should point to a proxy that forwards to it.
+- **Feedback feature** (`✉️ ارسال نظر`): `BOT_OWNER_ID` must be set in `.env` (numeric Telegram user ID) or the button is hidden.
+- **Bill ID validation**: Must be exactly 13 digits. Persian/Arabic digits (`۱۲۳...`) are auto-converted to Latin before validation.
 - **E2e tests import `AppModule`**: they will attempt to launch the Telegram bot. Ensure `.env` is valid or mock the bot for tests.
 - **TypeScript is intentionally loose**: `strictNullChecks: false`, `noImplicitAny: false` in `tsconfig.json`.
 - **Module resolution**: uses `module: "nodenext"` / `moduleResolution: "nodenext"` — respect `.js` extensions in imports.
