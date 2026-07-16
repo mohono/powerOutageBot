@@ -53,6 +53,10 @@ export class TelegramService implements OnModuleInit {
 
   private setupMiddlewares() {
     this.bot.use(session());
+
+    this.bot.catch((err) => {
+      console.error('Bot global error:', err);
+    });
   }
 
   private getUserState(userId: number): UserState {
@@ -97,44 +101,49 @@ export class TelegramService implements OnModuleInit {
   }
 
   private async createMainKeyboard(userId: number) {
-    const entries = await this.storageService.getEntries(userId);
+    try {
+      const entries = await this.storageService.getEntries(userId);
 
-    const keyboard = [];
+      const keyboard = [];
 
-    // Quick access buttons for saved bills
-    if (entries.length > 0) {
-      keyboard.push([
-        { text: '⚡ بررسی سریع قطعی', callback_data: 'quick_check' },
-      ]);
+      // Quick access buttons for saved bills
+      if (entries.length > 0) {
+        keyboard.push([
+          { text: '⚡ بررسی سریع قطعی', callback_data: 'quick_check' },
+        ]);
 
-      // Add bill buttons (max 2 per row)
-      const billButtons = [];
-      for (let i = 0; i < entries.length; i++) {
-        billButtons.push({
-          text: `🏠 ${entries[i].alias}`,
-          callback_data: `bill_${i}`,
-        });
+        // Add bill buttons (max 2 per row)
+        const billButtons = [];
+        for (let i = 0; i < entries.length; i++) {
+          billButtons.push({
+            text: entries[i].alias,
+            callback_data: `bill_${i}`,
+          });
 
-        if (billButtons.length === 2 || i === entries.length - 1) {
-          keyboard.push([...billButtons]);
-          billButtons.length = 0;
+          if (billButtons.length === 2 || i === entries.length - 1) {
+            keyboard.push([...billButtons]);
+            billButtons.length = 0;
+          }
         }
       }
+
+      // Action buttons
+      keyboard.push([
+        { text: '➕ افزودن قبض', callback_data: 'add_bill' },
+        { text: '🗑 حذف قبض', callback_data: 'manage_bills' },
+      ]);
+
+      keyboard.push([
+        { text: '📊 گزارش امروز همه', callback_data: 'full_report' },
+      ]);
+
+      keyboard.push([{ text: '❓ راهنما', callback_data: 'help' }]);
+
+      return keyboard;
+    } catch (err) {
+      console.error('createMainKeyboard error:', err);
+      return [[{ text: '🏠 منوی اصلی', callback_data: 'back_to_main' }]];
     }
-
-    // Action buttons
-    keyboard.push([
-      { text: '➕ افزودن قبض', callback_data: 'add_bill' },
-      { text: '🗑 حذف قبض', callback_data: 'manage_bills' },
-    ]);
-
-    keyboard.push([
-      { text: '📊 گزارش امروز همه', callback_data: 'full_report' },
-    ]);
-
-    keyboard.push([{ text: '❓ راهنما', callback_data: 'help' }]);
-
-    return keyboard;
   }
 
   private async updateMainMenu(
@@ -192,13 +201,17 @@ export class TelegramService implements OnModuleInit {
   }
 
   private async replyTemp(ctx: any, text: string, delayMs = 2000) {
-    const userId = ctx.from.id;
-    const userState = this.getUserState(userId);
-    const msg = await ctx.reply(text, { parse_mode: 'Markdown' });
-    userState.sentMessageIds.push(msg.message_id);
-    setTimeout(() => {
-      ctx.telegram.deleteMessage(ctx.chat.id, msg.message_id).catch(() => {});
-    }, delayMs);
+    try {
+      const userId = ctx.from.id;
+      const userState = this.getUserState(userId);
+      const msg = await ctx.reply(text, { parse_mode: 'Markdown' });
+      userState.sentMessageIds.push(msg.message_id);
+      setTimeout(() => {
+        ctx.telegram.deleteMessage(ctx.chat.id, msg.message_id).catch(() => {});
+      }, delayMs);
+    } catch (err) {
+      console.error('replyTemp error:', err);
+    }
   }
 
   private deleteUserMessage(ctx: any, delayMs = 2000) {
@@ -223,40 +236,52 @@ export class TelegramService implements OnModuleInit {
 
   private setupCommands() {
     this.bot.command('start', async (ctx) => {
-      const userId = ctx.from.id;
+      try {
+        const userId = ctx.from.id;
 
-      await this.updateMainMenu(
-        ctx,
-        userId,
-        `🔌 *به ربات اطلاع رسانی برنامه قطعی برق کرمانشاه خوش آمدید!*
+        await this.updateMainMenu(
+          ctx,
+          userId,
+          `🔌 *به ربات اطلاع رسانی برنامه قطعی برق کرمانشاه خوش آمدید!*
 
 با این ربات می‌تونید:
 ⚡ زمان‌های قطعی برق رو بر اساس شناسه قبض بررسی کنید
 🏠 چندین قبض رو ذخیره و مدیریت کنید
 📊 گزارش‌ سریع از برنامه قطعی برق امروز روی تمام قبوض خود دریافت کنید
-📄 برنامه قطعی برق از طریق فایل PDF رو مشاهده کنید
 
 برای ادامه از دکمه‌های زیر استفاده کنید:`,
-      );
+        );
+      } catch (err) {
+        console.error('start command error:', err);
+      }
     });
 
     this.bot.command('menu', async (ctx) => {
-      await this.returnToMainMenu(ctx);
+      try {
+        await this.returnToMainMenu(ctx);
+      } catch (err) {
+        console.error('menu command error:', err);
+      }
     });
   }
 
   private setupCallbacks() {
     // Back to main menu
     this.bot.action('back_to_main', async (ctx) => {
-      ctx.answerCbQuery().catch(() => {});
-      await this.returnToMainMenu(ctx);
+      try {
+        ctx.answerCbQuery().catch(() => {});
+        await this.returnToMainMenu(ctx);
+      } catch (err) {
+        console.error('back_to_main error:', err);
+      }
     });
 
     // Help callback
     this.bot.action('help', async (ctx) => {
-      ctx.answerCbQuery().catch(() => {});
-      const userId = ctx.from.id;
-      const helpText = `❓ *راهنمای ربات*
+      try {
+        ctx.answerCbQuery().catch(() => {});
+        const userId = ctx.from.id;
+        const helpText = `❓ *راهنمای ربات*
 
 ⚡ *بررسی سریع قطعی:* زمان قطعی برق تمام قبوض ذخیره شده را بررسی کنید
 🏠 *انتخاب قبض:* یک قبض ذخیره شده را انتخاب کنید
@@ -266,264 +291,296 @@ export class TelegramService implements OnModuleInit {
 
 📌 *نکته:* شناسه قبض را از قبض برق خود پیدا کنید.`;
 
-      await this.updateMainMenu(ctx, userId, helpText);
+        await this.updateMainMenu(ctx, userId, helpText);
+      } catch (err) {
+        console.error('help error:', err);
+      }
     });
 
     // Quick check all bills
     this.bot.action('quick_check', async (ctx) => {
-      ctx.answerCbQuery().catch(() => {});
-      const userId = ctx.from.id;
-      const entries = await this.storageService.getEntries(userId);
+      try {
+        ctx.answerCbQuery().catch(() => {});
+        const userId = ctx.from.id;
+        const entries = await this.storageService.getEntries(userId);
 
-      if (entries.length === 0) {
-        this.replyTemp(
-          ctx,
-          '❌ شما هنوز قبضی ذخیره نکرده‌اید. ابتدا یک قبض اضافه کنید.',
-        );
-        return;
-      }
-
-      const today = this.formatPersianDate('today');
-      let message = `⚡ *بررسی سریع قطعی برق - ${today}*\n\n`;
-
-      for (const entry of entries) {
-        try {
-          const outages = await this.fetchOutageData(entry.billId);
-          if (outages.length > 0) {
-            message += `🏠 *${entry.alias}:*\n`;
-            outages.forEach((time) => {
-              message += `  🔴 ${time}\n`;
-            });
-          } else {
-            message += `🏠 *${entry.alias}:* ✅ بدون قطعی\n`;
-          }
-        } catch {
-          message += `🏠 *${entry.alias}:* ❌ خطا در دریافت اطلاعات\n`;
+        if (entries.length === 0) {
+          this.replyTemp(
+            ctx,
+            '❌ شما هنوز قبضی ذخیره نکرده‌اید. ابتدا یک قبض اضافه کنید.',
+          );
+          return;
         }
-      }
 
-      await this.updateMainMenu(ctx, userId, message);
+        const today = this.formatPersianDate('today');
+        let message = `⚡ *بررسی سریع قطعی برق - ${today}*\n\n`;
+
+        for (const entry of entries) {
+          try {
+            const outages = await this.fetchOutageData(entry.billId);
+            if (outages.length > 0) {
+              message += `*${entry.alias}:*\n`;
+              outages.forEach((time) => {
+                message += `  🔴 ${time}\n`;
+              });
+            } else {
+              message += `*${entry.alias}:* ✅ بدون قطعی\n`;
+            }
+          } catch {
+            message += `*${entry.alias}:* ❌ خطا در دریافت اطلاعات\n`;
+          }
+        }
+
+        await this.updateMainMenu(ctx, userId, message);
+      } catch (err) {
+        console.error('quick_check error:', err);
+      }
     });
 
     // Add bill callback
     this.bot.action('add_bill', async (ctx) => {
-      ctx.answerCbQuery().catch(() => {});
-      const userId = ctx.from.id;
-
-      await this.updateMainMenu(
-        ctx,
-        userId,
-        '➕ *افزودن قبض جدید*\n\nلطفاً شناسه قبض خود را وارد کنید:\n(شناسه قبض را از روی قبض برق پیدا کنید)',
-        [[{ text: '🔙 بازگشت', callback_data: 'back_to_main' }]],
-      );
-
-      this.getUserState(userId).pdfData = [{ expectingBillId: true }];
-    });
-
-    // Manage bills callback
-    this.bot.action('manage_bills', async (ctx) => {
-      ctx.answerCbQuery().catch(() => {});
-      const userId = ctx.from.id;
-      const entries = await this.storageService.getEntries(userId);
-
-      if (entries.length === 0) {
-        this.replyTemp(ctx, '❌ شما هنوز قبضی ذخیره نکرده‌اید.');
-        return;
-      }
-
-      let message = '🗑 *مدیریت قبوض*\n\nقبوض ذخیره شده:\n\n';
-      const keyboard = [];
-
-      entries.forEach((entry, index) => {
-        message += `${index + 1}. ${entry.alias} (${entry.billId})\n`;
-        keyboard.push([
-          {
-            text: `🗑 حذف ${entry.alias}`,
-            callback_data: `delete_bill_${index}`,
-          },
-        ]);
-      });
-
-      keyboard.push([{ text: '🔙 بازگشت', callback_data: 'back_to_main' }]);
-
-      await this.updateMainMenu(ctx, userId, message, keyboard);
-    });
-
-    // Full report for today
-    this.bot.action('full_report', async (ctx) => {
-      ctx.answerCbQuery().catch(() => {});
-      const userId = ctx.from.id;
-      const { allowed, message: limitMsg } = this.canUserRequestReport(userId);
-
-      if (!allowed) {
-        this.replyTemp(ctx, limitMsg);
-        return;
-      }
-
-      const entries = await this.storageService.getEntries(userId);
-
-      if (entries.length === 0) {
-        this.replyTemp(ctx, '❌ شما هنوز قبضی ذخیره نکرده‌اید.');
-        return;
-      }
-
-      const today = this.formatPersianDate('today');
-      let message = `📊 *گزارش کامل قطعی برق امروز ${today}*\n\n`;
-
-      for (const entry of entries) {
-        try {
-          const outages = await this.fetchOutageData(entry.billId);
-          if (outages.length > 0) {
-            message += `🏠 *${entry.alias} (${entry.billId}):*\n`;
-            outages.forEach((time) => {
-              message += `  🔴 ${time}\n`;
-            });
-            message += '\n';
-          } else {
-            message += `🏠 *${entry.alias} (${entry.billId}):* ✅ بدون قطعی\n\n`;
-          }
-        } catch {
-          message += `🏠 *${entry.alias} (${entry.billId}):* ❌ خطا\n\n`;
-        }
-      }
-
-      await this.updateMainMenu(ctx, userId, message);
-    });
-
-    // Delete bill (must be before bill_(\d+) to avoid regex collision)
-    this.bot.action(/delete_bill_(\d+)/, async (ctx) => {
-      ctx.answerCbQuery().catch(() => {});
-      const userId = ctx.from.id;
-      const index = parseInt(ctx.match[1]);
-
-      const success = await this.storageService.deleteEntry(userId, index);
-
-      if (success) {
-        this.replyTemp(ctx, '✅ قبض با موفقیت حذف شد.');
-      } else {
-        this.replyTemp(ctx, '❌ خطا در حذف قبض.');
-      }
-
-      await this.returnToMainMenu(ctx);
-    });
-
-    // Handle bill selection
-    this.bot.action(/bill_(\d+)/, async (ctx) => {
-      ctx.answerCbQuery().catch(() => {});
-      const userId = ctx.from.id;
-      const index = parseInt(ctx.match[1]);
-      const entries = await this.storageService.getEntries(userId);
-      const entry = entries[index];
-
-      if (!entry) {
-        this.replyTemp(ctx, '❌ قبض یافت نشد.');
-        return;
-      }
-
-      const today = this.formatPersianDate('today');
-      const tomorrow = this.formatPersianDate('tomorrow');
-      const dayAfter = this.formatPersianDate('dayafter');
-
-      let message = `🏠 *${entry.alias}*\n`;
-      message += `📌 شناسه قبض: ${entry.billId}\n\n`;
-
       try {
-        const todayOutages = await this.fetchOutageData(entry.billId, today);
-        const tomorrowOutages = await this.fetchOutageData(
-          entry.billId,
-          tomorrow,
-        );
-        const dayAfterOutages = await this.fetchOutageData(
-          entry.billId,
-          dayAfter,
-        );
-
-        message += `📅 *امروز (${today}):*\n`;
-        if (todayOutages.length > 0) {
-          todayOutages.forEach((time) => {
-            message += `  🔴 ${time}\n`;
-          });
-        } else {
-          message += '  ✅ بدون قطعی\n';
-        }
-
-        message += `\n📅 *فردا (${tomorrow}):*\n`;
-        if (tomorrowOutages.length > 0) {
-          tomorrowOutages.forEach((time) => {
-            message += `  🔴 ${time}\n`;
-          });
-        } else {
-          message += '  ✅ بدون قطعی\n';
-        }
-
-        message += `\n📅 *پس فردا (${dayAfter}):*\n`;
-        if (dayAfterOutages.length > 0) {
-          dayAfterOutages.forEach((time) => {
-            message += `  🔴 ${time}\n`;
-          });
-        } else {
-          message += '  ✅ بدون قطعی\n';
-        }
-      } catch {
-        message += '❌ خطا در دریافت اطلاعات قطعی برق.';
-      }
-
-      const keyboard = [
-        [
-          { text: '🔄 بروزرسانی', callback_data: `bill_${index}` },
-          { text: '🏠 منوی اصلی', callback_data: 'back_to_main' },
-        ],
-      ];
-
-      await this.updateMainMenu(ctx, userId, message, keyboard);
-    });
-
-    // Handle text messages
-    this.bot.on('text', async (ctx) => {
-      const userId = ctx.from.id;
-      const userState = this.getUserState(userId);
-
-      // Check if we're expecting a bill ID
-      if (
-        userState.pdfData &&
-        userState.pdfData[0] &&
-        userState.pdfData[0].expectingBillId
-      ) {
-        this.deleteUserMessage(ctx);
-        const billId = ctx.message.text.trim();
-        userState.pdfData = []; // Reset state
-
-        // Ask for alias
-        userState.pdfData = [{ expectingAlias: true, newBillId: billId }];
+        ctx.answerCbQuery().catch(() => {});
+        const userId = ctx.from.id;
 
         await this.updateMainMenu(
           ctx,
           userId,
-          `✅ شناسه قبض: ${billId}\n\nلطفاً یک نام اختصاری برای این قبض وارد کنید:\n(مثال: خانه، محل کار)`,
+          '➕ *افزودن قبض جدید*\n\nلطفاً شناسه قبض خود را وارد کنید:\n(شناسه قبض را از روی قبض برق پیدا کنید)',
           [[{ text: '🔙 بازگشت', callback_data: 'back_to_main' }]],
         );
-        return;
+
+        this.getUserState(userId).pdfData = [{ expectingBillId: true }];
+      } catch (err) {
+        console.error('add_bill error:', err);
       }
+    });
 
-      // Check if we're expecting an alias
-      if (
-        userState.pdfData &&
-        userState.pdfData[0] &&
-        userState.pdfData[0].expectingAlias
-      ) {
-        this.deleteUserMessage(ctx);
-        const alias = ctx.message.text.trim();
-        const billId = userState.pdfData[0].newBillId;
-        userState.pdfData = []; // Reset state
+    // Manage bills callback
+    this.bot.action('manage_bills', async (ctx) => {
+      try {
+        ctx.answerCbQuery().catch(() => {});
+        const userId = ctx.from.id;
+        const entries = await this.storageService.getEntries(userId);
 
-        await this.storageService.saveEntry(userId, { alias, billId });
+        if (entries.length === 0) {
+          this.replyTemp(ctx, '❌ شما هنوز قبضی ذخیره نکرده‌اید.');
+          return;
+        }
 
-        this.replyTemp(
-          ctx,
-          `✅ قبض "${alias}" با شناسه ${billId} با موفقیت ذخیره شد.`,
-        );
+        let message = '🗑 *مدیریت قبوض*\n\nقبوض ذخیره شده:\n\n';
+        const keyboard = [];
+
+        entries.forEach((entry, index) => {
+          message += `${index + 1}. ${entry.alias} (${entry.billId})\n`;
+          keyboard.push([
+            {
+              text: `🗑 حذف ${entry.alias}`,
+              callback_data: `delete_bill_${index}`,
+            },
+          ]);
+        });
+
+        keyboard.push([{ text: '🔙 بازگشت', callback_data: 'back_to_main' }]);
+
+        await this.updateMainMenu(ctx, userId, message, keyboard);
+      } catch (err) {
+        console.error('manage_bills error:', err);
+      }
+    });
+
+    // Full report for today
+    this.bot.action('full_report', async (ctx) => {
+      try {
+        ctx.answerCbQuery().catch(() => {});
+        const userId = ctx.from.id;
+        const { allowed, message: limitMsg } =
+          this.canUserRequestReport(userId);
+
+        if (!allowed) {
+          this.replyTemp(ctx, limitMsg);
+          return;
+        }
+
+        const entries = await this.storageService.getEntries(userId);
+
+        if (entries.length === 0) {
+          this.replyTemp(ctx, '❌ شما هنوز قبضی ذخیره نکرده‌اید.');
+          return;
+        }
+
+        const today = this.formatPersianDate('today');
+        let message = `📊 *گزارش کامل قطعی برق امروز ${today}*\n\n`;
+
+        for (const entry of entries) {
+          try {
+            const outages = await this.fetchOutageData(entry.billId);
+            if (outages.length > 0) {
+              message += `*${entry.alias} (${entry.billId}):*\n`;
+              outages.forEach((time) => {
+                message += `  🔴 ${time}\n`;
+              });
+              message += '\n';
+            } else {
+              message += `*${entry.alias} (${entry.billId}):* ✅ بدون قطعی\n\n`;
+            }
+          } catch {
+            message += `*${entry.alias} (${entry.billId}):* ❌ خطا\n\n`;
+          }
+        }
+
+        await this.updateMainMenu(ctx, userId, message);
+      } catch (err) {
+        console.error('full_report error:', err);
+      }
+    });
+
+    // Delete bill (must be before bill_(\d+) to avoid regex collision)
+    this.bot.action(/delete_bill_(\d+)/, async (ctx) => {
+      try {
+        ctx.answerCbQuery().catch(() => {});
+        const userId = ctx.from.id;
+        const index = parseInt(ctx.match[1]);
+
+        const success = await this.storageService.deleteEntry(userId, index);
+
+        if (success) {
+          this.replyTemp(ctx, '✅ قبض با موفقیت حذف شد.');
+        } else {
+          this.replyTemp(ctx, '❌ خطا در حذف قبض.');
+        }
+
         await this.returnToMainMenu(ctx);
-        return;
+      } catch (err) {
+        console.error('delete_bill error:', err);
+      }
+    });
+
+    // Handle bill selection
+    this.bot.action(/bill_(\d+)/, async (ctx) => {
+      try {
+        ctx.answerCbQuery().catch(() => {});
+        const userId = ctx.from.id;
+        const index = parseInt(ctx.match[1]);
+        const entries = await this.storageService.getEntries(userId);
+        const entry = entries[index];
+
+        if (!entry) {
+          this.replyTemp(ctx, '❌ قبض یافت نشد.');
+          return;
+        }
+
+        const today = this.formatPersianDate('today');
+        const tomorrow = this.formatPersianDate('tomorrow');
+        const dayAfter = this.formatPersianDate('dayafter');
+
+        let message = `*${entry.alias}*\n`;
+        message += `📌 شناسه قبض: ${entry.billId}\n\n`;
+
+        try {
+          const todayOutages = await this.fetchOutageData(entry.billId, today);
+          const tomorrowOutages = await this.fetchOutageData(
+            entry.billId,
+            tomorrow,
+          );
+          const dayAfterOutages = await this.fetchOutageData(
+            entry.billId,
+            dayAfter,
+          );
+
+          message += `📅 *امروز (${today}):*\n`;
+          if (todayOutages.length > 0) {
+            todayOutages.forEach((time) => {
+              message += `  🔴 ${time}\n`;
+            });
+          } else {
+            message += '  ✅ بدون قطعی\n';
+          }
+
+          message += `\n📅 *فردا (${tomorrow}):*\n`;
+          if (tomorrowOutages.length > 0) {
+            tomorrowOutages.forEach((time) => {
+              message += `  🔴 ${time}\n`;
+            });
+          } else {
+            message += '  ✅ بدون قطعی\n';
+          }
+
+          message += `\n📅 *پس فردا (${dayAfter}):*\n`;
+          if (dayAfterOutages.length > 0) {
+            dayAfterOutages.forEach((time) => {
+              message += `  🔴 ${time}\n`;
+            });
+          } else {
+            message += '  ✅ بدون قطعی\n';
+          }
+        } catch {
+          message += '❌ خطا در دریافت اطلاعات قطعی برق.';
+        }
+
+        const keyboard = [
+          [
+            { text: '🔄 بروزرسانی', callback_data: `bill_${index}` },
+            { text: '🏠 منوی اصلی', callback_data: 'back_to_main' },
+          ],
+        ];
+
+        await this.updateMainMenu(ctx, userId, message, keyboard);
+      } catch (err) {
+        console.error('bill error:', err);
+      }
+    });
+
+    // Handle text messages
+    this.bot.on('text', async (ctx) => {
+      try {
+        const userId = ctx.from.id;
+        const userState = this.getUserState(userId);
+
+        // Check if we're expecting a bill ID
+        if (
+          userState.pdfData &&
+          userState.pdfData[0] &&
+          userState.pdfData[0].expectingBillId
+        ) {
+          this.deleteUserMessage(ctx);
+          const billId = ctx.message.text.trim();
+          userState.pdfData = [];
+
+          // Ask for alias
+          userState.pdfData = [{ expectingAlias: true, newBillId: billId }];
+
+          await this.updateMainMenu(
+            ctx,
+            userId,
+            `✅ شناسه قبض: ${billId}\n\nلطفاً یک نام اختصاری برای این قبض وارد کنید:\n(مثال: خانه، محل کار)`,
+            [[{ text: '🔙 بازگشت', callback_data: 'back_to_main' }]],
+          );
+          return;
+        }
+
+        // Check if we're expecting an alias
+        if (
+          userState.pdfData &&
+          userState.pdfData[0] &&
+          userState.pdfData[0].expectingAlias
+        ) {
+          this.deleteUserMessage(ctx);
+          const alias = ctx.message.text.trim();
+          const billId = userState.pdfData[0].newBillId;
+          userState.pdfData = [];
+
+          await this.storageService.saveEntry(userId, { alias, billId });
+
+          this.replyTemp(
+            ctx,
+            `✅ قبض "${alias}" با شناسه ${billId} با موفقیت ذخیره شد.`,
+          );
+          await this.returnToMainMenu(ctx);
+          return;
+        }
+      } catch (err) {
+        console.error('text handler error:', err);
       }
     });
   }
