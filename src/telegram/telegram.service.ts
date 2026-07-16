@@ -6,15 +6,14 @@
 /* eslint-disable @typescript-eslint/no-unsafe-argument */
 /* eslint-disable @typescript-eslint/no-unsafe-return */
 /* eslint-disable @typescript-eslint/no-unused-vars */
-/* eslint-disable @typescript-eslint/no-floating-promises */
+
 /* eslint-disable @typescript-eslint/restrict-template-expressions */
 
 import { Injectable, OnModuleInit } from '@nestjs/common';
-import { Telegraf, Scenes, session, Markup } from 'telegraf';
+import { Telegraf, Scenes, session } from 'telegraf';
 import axios from 'axios';
 import { toJalaali } from 'jalaali-js';
 import { StorageService } from '../storage/storage.service';
-import * as fs from 'fs';
 
 interface BillEntry {
   alias: string;
@@ -38,7 +37,6 @@ export class TelegramService implements OnModuleInit {
   constructor(private readonly storageService: StorageService) {
     this.bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
     this.setupMiddlewares();
-    this.setupWizard();
     this.setupCommands();
     this.setupCallbacks();
   }
@@ -200,18 +198,26 @@ export class TelegramService implements OnModuleInit {
     }
   }
 
-  private async replyTemp(ctx: any, text: string, delayMs = 2000) {
-    try {
-      const userId = ctx.from.id;
-      const userState = this.getUserState(userId);
-      const msg = await ctx.reply(text, { parse_mode: 'Markdown' });
-      userState.sentMessageIds.push(msg.message_id);
-      setTimeout(() => {
-        ctx.telegram.deleteMessage(ctx.chat.id, msg.message_id).catch(() => {});
-      }, delayMs);
-    } catch (err) {
-      console.error('replyTemp error:', err);
+  private async flashMessage(ctx: any, text: string, delayMs = 1500) {
+    const userId = ctx.from.id;
+    const userState = this.getUserState(userId);
+
+    if (userState.mainMessageId) {
+      try {
+        await ctx.telegram.editMessageText(
+          ctx.chat.id,
+          userState.mainMessageId,
+          undefined,
+          text,
+          { parse_mode: 'Markdown' },
+        );
+      } catch {
+        // If edit fails, returnToMainMenu will re-send
+      }
     }
+
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+    await this.returnToMainMenu(ctx);
   }
 
   private deleteUserMessage(ctx: any, delayMs = 2000) {
@@ -302,17 +308,25 @@ export class TelegramService implements OnModuleInit {
       try {
         ctx.answerCbQuery().catch(() => {});
         const userId = ctx.from.id;
+        const { allowed, message: limitMsg } =
+          this.canUserRequestReport(userId);
+
+        if (!allowed) {
+          await this.flashMessage(ctx, limitMsg);
+          return;
+        }
+
         const entries = await this.storageService.getEntries(userId);
 
         if (entries.length === 0) {
-          this.replyTemp(
+          await this.flashMessage(
             ctx,
             '❌ شما هنوز قبضی ذخیره نکرده‌اید. ابتدا یک قبض اضافه کنید.',
           );
           return;
         }
 
-        const today = this.formatPersianDate('today');
+        const today = this.getDateForType('today');
         let message = `⚡ *بررسی سریع قطعی برق - ${today}*\n\n`;
 
         for (const entry of entries) {
@@ -364,7 +378,7 @@ export class TelegramService implements OnModuleInit {
         const entries = await this.storageService.getEntries(userId);
 
         if (entries.length === 0) {
-          this.replyTemp(ctx, '❌ شما هنوز قبضی ذخیره نکرده‌اید.');
+          await this.flashMessage(ctx, '❌ شما هنوز قبضی ذخیره نکرده‌اید.');
           return;
         }
 
@@ -398,18 +412,18 @@ export class TelegramService implements OnModuleInit {
           this.canUserRequestReport(userId);
 
         if (!allowed) {
-          this.replyTemp(ctx, limitMsg);
+          await this.flashMessage(ctx, limitMsg);
           return;
         }
 
         const entries = await this.storageService.getEntries(userId);
 
         if (entries.length === 0) {
-          this.replyTemp(ctx, '❌ شما هنوز قبضی ذخیره نکرده‌اید.');
+          await this.flashMessage(ctx, '❌ شما هنوز قبضی ذخیره نکرده‌اید.');
           return;
         }
 
-        const today = this.formatPersianDate('today');
+        const today = this.getDateForType('today');
         let message = `📊 *گزارش کامل قطعی برق امروز ${today}*\n\n`;
 
         for (const entry of entries) {
@@ -445,12 +459,10 @@ export class TelegramService implements OnModuleInit {
         const success = await this.storageService.deleteEntry(userId, index);
 
         if (success) {
-          this.replyTemp(ctx, '✅ قبض با موفقیت حذف شد.');
+          await this.flashMessage(ctx, '✅ قبض با موفقیت حذف شد.');
         } else {
-          this.replyTemp(ctx, '❌ خطا در حذف قبض.');
+          await this.flashMessage(ctx, '❌ خطا در حذف قبض.');
         }
-
-        await this.returnToMainMenu(ctx);
       } catch (err) {
         console.error('delete_bill error:', err);
       }
@@ -466,13 +478,13 @@ export class TelegramService implements OnModuleInit {
         const entry = entries[index];
 
         if (!entry) {
-          this.replyTemp(ctx, '❌ قبض یافت نشد.');
+          await this.flashMessage(ctx, '❌ قبض یافت نشد.');
           return;
         }
 
-        const today = this.formatPersianDate('today');
-        const tomorrow = this.formatPersianDate('tomorrow');
-        const dayAfter = this.formatPersianDate('dayafter');
+        const today = this.getDateForType('today');
+        const tomorrow = this.getDateForType('tomorrow');
+        const dayAfter = this.getDateForType('dayafter');
 
         let message = `*${entry.alias}*\n`;
         message += `📌 شناسه قبض: ${entry.billId}\n\n`;
@@ -572,11 +584,10 @@ export class TelegramService implements OnModuleInit {
 
           await this.storageService.saveEntry(userId, { alias, billId });
 
-          this.replyTemp(
+          await this.flashMessage(
             ctx,
             `✅ قبض "${alias}" با شناسه ${billId} با موفقیت ذخیره شد.`,
           );
-          await this.returnToMainMenu(ctx);
           return;
         }
       } catch (err) {
@@ -597,15 +608,6 @@ export class TelegramService implements OnModuleInit {
       .map((item: any) => item.period)
       .filter((p: string) => /\d{2}:\d{2}-\d{2}:\d{2}/.test(p));
     return [...new Set(periods)];
-  }
-
-  private formatPersianDate(dateType: string): string {
-    const date = this.getDateForType(dateType);
-    return date;
-  }
-
-  private setupWizard() {
-    // ... existing wizard code ...
   }
 
   private getDateForType(type: string): string {
